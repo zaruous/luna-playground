@@ -1,0 +1,56 @@
+name: NewsTrend CI and Pages
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: newstrend-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Test feed parser
+        run: npm test
+      - name: Refresh today's news
+        run: npm run news:refresh
+      - name: Verify story count
+        run: node -e "const d=require('./src/data/news.json'); if(d.items.length < 10 || d.items.length > 20) throw new Error('Expected 10-20 same-day stories, got '+d.items.length); console.log('stories:', d.items.length)"
+      - name: Build React site
+        run: npm run build
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
