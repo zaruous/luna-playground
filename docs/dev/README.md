@@ -8,7 +8,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| [implementation-plan.md](./implementation-plan.md) | 마일스톤 M1~M6, 의존 순서, 단계별 완료 기준 |
+| [implementation-plan.md](./implementation-plan.md) | 마일스톤 M1~M7, 의존 순서, 단계별 완료 기준, 라이브러리 채택 검토 |
 | [token-measurement-survey.md](./token-measurement-survey.md) | GitHub 오픈소스 트래커들의 토큰 측정 알고리즘 분석과 그로부터 도출한 설계 규칙 |
 | [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 |
 | [store-extensions.md](./store-extensions.md) | 위 설계를 받기 위한 SQLite 스키마·쿼리 확장 |
