@@ -391,7 +391,7 @@ Do not store:
 - tool input/output payloads;
 - file contents found in the conversation.
 
-Tests should include a fixture containing sentinel prompt/assistant text and assert that the text never appears in SQLite or IPC snapshots.
+Tests should include a fixture containing sentinel prompt/assistant text and assert that the text never appears in SQLite or in snapshots served over HTTP/SSE.
 
 ## 18. Testing plan
 
@@ -428,7 +428,7 @@ Tests should include a fixture containing sentinel prompt/assistant text and ass
 
 - prompt/assistant sentinel strings never reach SQLite;
 - hook `prompt` and `last_assistant_message` fields are discarded;
-- renderer snapshots expose usage metadata only.
+- client snapshots expose usage metadata only.
 
 ## 19. Acceptance criteria
 

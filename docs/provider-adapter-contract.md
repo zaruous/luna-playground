@@ -1,6 +1,6 @@
 # Provider adapter contract
 
-NyangTracker keeps provider-native parsing outside the shared aggregation and renderer layers. Every connected AI tool is registered through `UsageProviderRegistry` and writes the same normalized event shapes to `UsageStore`.
+NyangTracker keeps provider-native parsing outside the shared aggregation and client layers. Every connected AI tool is registered through `UsageProviderRegistry` and writes the same normalized event shapes to `UsageStore`.
 
 ## Runtime adapter
 
@@ -45,10 +45,16 @@ Adapters emit only `updated`, `hook`, and `error-state` lifecycle events. The re
     reasoningTokens: 0,
     totalTokens: 0
   },
+  eventKey: 'codex|<session>|<timestamp>|<model>|<identity token fields>',
+  cumulative: { totalTokens: 0 },
+  cumulativeReset: false,
+  incrementSource: 'last_token_usage',
   measurementSource: 'local_log',
   measurementQuality: 'local_exact'
 }
 ```
+
+`incrementSource` records how the delta was derived — `last_token_usage`, `cumulative_delta` or `initial_cumulative` for Codex — and `cumulativeReset` marks a counter reset so downstream code never books a full reset total as usage. A fork keeps its parent session identity in `eventKey` so the same turn is not counted twice. Parsers may carry extra provider context on the event — Codex adds `contextWindow` — which the store currently ignores rather than persisting.
 
 Provider parsers decide whether their native source is cumulative or already per-request. The store receives deltas only. Unsupported token categories remain zero; uncertain fields lower `measurementQuality` instead of being invented.
 
@@ -85,6 +91,7 @@ The engine emits one entry per catalog provider, connected or planned:
 {
   id,
   name,
+  order,
   integration,
   measurement,
   capabilities,
@@ -93,11 +100,27 @@ The engine emits one entry per catalog provider, connected or planned:
   rateLimits,
   quotaWindows,
   collector,
+  hook,
   reconciliation
 }
 ```
 
-Top-level monthly totals are the sum of every provider entry. The renderer renders these snapshots without provider-specific token calculations.
+`order` fixes the catalog display sequence and `hook` reports bridge liveness (`socketActive`, `lastHookAt`) rather than usage. Planned providers appear with `integration: 'planned'`, `measurement: null` and zeroed totals so the client needs no separate catalog.
+
+The snapshot envelope wraps those entries:
+
+```js
+{
+  generatedAt,
+  period: { type: 'month', since },
+  totals,
+  providers,
+  projects,
+  diagnostics
+}
+```
+
+`totals` is the sum of every provider entry for the current local month, `projects` carries the six most recent cross-provider projects, and `diagnostics` exposes the SQLite path plus row counters (sessions, usage events, rate snapshots, scanned files, cumulative resets). The client renders these snapshots without provider-specific token calculations.
 
 ## Adapter order
 

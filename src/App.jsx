@@ -148,6 +148,27 @@ function App() {
     return () => { active = false; unsubscribe?.(); };
   }, [api]);
 
+  useEffect(() => {
+    if (!api?.usage) return undefined;
+    let active = true;
+    let pending = false;
+    const reconcileOnReturn = () => {
+      if (pending || document.visibilityState !== 'visible') return;
+      pending = true;
+      api.usage.rescan()
+        .then((value) => { if (active) setSnapshot(value); })
+        .catch(() => {})
+        .finally(() => { pending = false; });
+    };
+    window.addEventListener('focus', reconcileOnReturn);
+    document.addEventListener('visibilitychange', reconcileOnReturn);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', reconcileOnReturn);
+      document.removeEventListener('visibilitychange', reconcileOnReturn);
+    };
+  }, [api]);
+
   async function rescan() {
     if (!api?.usage || actionBusy) return;
     setActionBusy(true);

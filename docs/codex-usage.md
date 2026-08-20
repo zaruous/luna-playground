@@ -58,7 +58,7 @@ Reliability order:
 2. Filesystem watch — fast wake-up.
 3. Codex lifecycle Hook — optional fast wake-up after prompt/stop/session events.
 4. Periodic reconcile — repairs missed watcher/hook events.
-5. Window focus reconcile — catches sleep/resume and long idle periods.
+5. Browser focus/visibility reconcile — catches sleep/resume and long idle periods when the dashboard tab is returned to.
 6. SSE snapshot broadcast — delivers the normalized result to every connected UI client.
 
 Hooks are optional. If NyangTracker is closed or a hook fails, Codex work must continue normally. The next reconcile replays any missing JSONL tail. Hook input is reduced to event/session/turn/transcript/cwd/model metadata before it is sent to the app; prompt contents are not stored by the hook bridge.

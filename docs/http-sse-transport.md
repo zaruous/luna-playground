@@ -29,6 +29,8 @@ Standalone defaults to `http://127.0.0.1:47831`. Configuration:
 
 `NYANG_ALLOW_REMOTE` is not transport security. Remote deployment additionally requires TLS, an authenticated reverse proxy, restricted origins, and a device/tenant authorization policy.
 
+Only one usage service may run per user: the hook bridge binds a fixed socket, so a second `npm run dev` or `npm run server` exits with a message naming the socket instead of racing the first process for SQLite and hook signals.
+
 ## SSE event
 
 ```text
@@ -44,7 +46,7 @@ The server sends:
 - a new full `snapshot` whenever `UsageEngine` emits an update;
 - a heartbeat comment every 20 seconds.
 
-Snapshots are intentionally self-contained. `Last-Event-ID` can be used for diagnostics, but correctness does not depend on retaining an unbounded event backlog.
+Snapshots are intentionally self-contained. The `id` is a monotonic per-process revision for diagnostics only: the server keeps no event backlog and ignores `Last-Event-ID`, because a reconnecting client immediately receives a full snapshot.
 
 ## Security
 

@@ -55,11 +55,16 @@ REST handles request/response operations and SSE carries server-to-client update
 - `GET /api/v1/snapshot` — current normalized snapshot.
 - `GET /api/v1/events` — `snapshot` SSE events, including an immediate full snapshot and heartbeat comments.
 - `POST /api/v1/rescan` — request provider reconciliation.
-- `GET /api/v1/diagnostics` — non-secret service diagnostics.
+- `GET /api/v1/diagnostics` — SQLite path and store row counters; no provider content.
 - `GET|POST|DELETE /api/v1/providers/codex/hooks` — inspect, install, or remove NyangTracker hooks.
 - `GET /healthz` — minimal unauthenticated liveness check.
 
 Every `/api/v1` request requires the process-generated access token. REST sends it in `X-Nyang-Access-Token`; browser `EventSource` sends it as the `access_token` query parameter. SSE events contain complete snapshots, so reconnecting clients do not need to replay every missed delta.
+
+## Single service instance
+
+The hook bridge listens on a fixed per-user socket (`\.\pipe
+yangtracker-usage-hook` on Windows, a socket under the temp directory elsewhere), so only one usage service can run at a time. A second instance fails fast with a readable message instead of competing for the same SQLite file and hook signals.
 
 ## Provider adapter contract
 
@@ -70,15 +75,16 @@ Each connected provider extends `UsageProviderAdapter` and is owned by `UsagePro
 - `reconcile(reason)` — repair missed local/server observations.
 - `getStatus()` — expose non-sensitive collector health.
 
-Adapters emit `updated`, `hook`, and `error-state`. Provider-specific scanner implementations may additionally expose the following internal capabilities:
+Adapters emit `updated`, `hook`, and `error-state`. Beyond that contract each collector is free to name its internals; the Codex adapter covers these roles as follows:
 
-- `detect()` — determine whether the provider is installed/configured.
-- `scanHistorical()` — discover and import durable historical usage.
-- `scanIncremental()` — read only data appended since the last persisted offset/cursor.
-- `watch()` — wake the collector when provider state changes.
-- `parse()` — normalize provider-native records into common token fields.
-- `reconcile()` — compare local activity with any available server-side anchor.
-- `installHooks()` / `uninstallHooks()` — optional acceleration path, never a source of truth.
+- installed/configured detection — `detect()`.
+- historical import and incremental tailing — `discoverFiles()` plus `scanFile()`, which resumes from the persisted byte offset instead of re-reading a rollout.
+- change wake-up — `refreshWatchers()` for filesystem events and `handleHookSignal()` for hook pings.
+- normalization — `parseCodexRolloutLine()` in the provider's own parser module, not on the adapter.
+- server-anchor comparison — `reconcile(reason)`.
+- health reporting — `getStatus()`.
+
+Hook installation lives outside the adapter in `CodexHookInstaller` (`install()` / `uninstall()` / `status()`), because it edits user configuration rather than collecting usage. Hooks stay an acceleration path, never a source of truth.
 
 ## Normalized token fields
 
@@ -118,14 +124,14 @@ Realtime responsiveness is intentionally redundant:
 2. filesystem watch is the fast path;
 3. lifecycle hook is an optional wake-up signal;
 4. periodic reconcile repairs missed notifications;
-5. app focus/restart performs another reconciliation pass;
+5. browser focus/visibility change or a client reload performs another reconciliation pass;
 6. the engine publishes a normalized snapshot to all connected SSE clients.
 
 This design means the tracker may be closed during an AI session and still catch up when reopened.
 
 ## Security boundary
 
-The renderer does not receive arbitrary filesystem access.
+The browser client does not receive arbitrary filesystem access.
 
 ```text
 React/browser client
@@ -163,10 +169,10 @@ The schema is deliberately provider-neutral enough for later adapters.
 
 ## UI measurement labels
 
-The dashboard should distinguish data provenance at the number level.
+The dashboard distinguishes data provenance at the number level. Codex v1 renders the first three labels; the rest are reserved for later adapters and the pricing registry.
 
-- **서버 검증됨** — reconciled against an authoritative server usage endpoint.
-- **서버 관측** — server quota/usage snapshot exists, but not necessarily an exact token ledger.
-- **로컬 관측** — parsed from provider-owned local logs.
-- **추정** — derived from pricing/tokenizer/other estimation.
-- **미확인** — no reliable source currently supports the value.
+- **로컬 관측** — parsed from provider-owned local logs. Implemented.
+- **서버 관측** — server quota/usage snapshot exists, but not necessarily an exact token ledger. Implemented.
+- **미확인** — no reliable source currently supports the value. Implemented.
+- **서버 검증됨** — reconciled against an authoritative server usage endpoint. Reserved.
+- **추정** — derived from pricing/tokenizer/other estimation. Reserved.

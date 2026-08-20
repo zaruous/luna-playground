@@ -23,7 +23,8 @@ Status: implemented in the current branch.
 - Watch active Codex data and periodically reconcile missed changes.
 - Store `rate_limits` windows as server snapshots.
 - Classify reconciliation as matched, server-only, local-only, reset or unknown.
-- Push normalized snapshots to the React client over HTTP/SSE.
+- Push normalized snapshots to the React client over authenticated HTTP/SSE.
+- Serve the built client and API from one local process, and inject the same service configuration into the Vite dev page.
 - Optionally merge lifecycle command hooks into Codex configuration.
 - Keep hooks non-authoritative and non-blocking for Codex work.
 
