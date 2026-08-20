@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540" font-family="Segoe UI, Noto Sans KR, Helvetica, Arial, sans-serif" role="img" aria-label="alert 화면 와이어프레임">
+  <rect x="0" y="0" width="900" height="540" rx="0" fill="#f8f3eb" />
+  <rect x="0" y="0" width="150" height="540" rx="0" fill="#ece6dc" />
+  <text x="18" y="34" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">냥토큰</text>
+  <text x="18" y="52" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">트래커</text>
+  <text x="30" y="89" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">대시보드</text>
+  <circle cx="22" cy="84" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="127" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">AI 사용량</text>
+  <circle cx="22" cy="122" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="165" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <circle cx="22" cy="160" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="203" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">동기화</text>
+  <circle cx="22" cy="198" r="3" fill="#8a8078" opacity="0.45" />
+  <rect x="10" y="222" width="130" height="30" rx="9" fill="#efe6d5" />
+  <text x="30" y="241" font-size="11" fill="#8a6f3d" font-weight="bold" text-anchor="start">알림</text>
+  <circle cx="22" cy="236" r="3" fill="#8a6f3d" opacity="1" />
+  <text x="30" y="279" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">설정</text>
+  <circle cx="22" cy="274" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">알림</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">한도 · 예산 · 수집 중단 감지</text>
+  <rect x="820" y="30" width="58" height="20" rx="10" fill="#f4eee5" /><text x="849.0" y="44" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">모두 읽음</text>
+  <rect x="754" y="30" width="58" height="20" rx="10" fill="#efe6d5" /><text x="783.0" y="44" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">규칙 추가</text>
+  <rect x="172" y="76" width="388.3" height="268" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">규칙</text>
+  <text x="546.3" y="98" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="end">평가는 서비스 프로세스에서</text>
+  <rect x="186" y="116" width="360.3" height="38" rx="9" fill="#f4eee5" />
+  <text x="198" y="132" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">주간 한도 80% 초과</text>
+  <text x="198" y="145" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">quota_percent · Codex · 10080분</text>
+  <rect x="502.29999999999995" y="128" width="30" height="15" rx="8" fill="#c9824f" />
+  <circle cx="524.3" cy="135.5" r="5.5" fill="#fffdf9" />
+  <rect x="186" y="160" width="360.3" height="38" rx="9" fill="#f4eee5" />
+  <text x="198" y="176" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">5시간 한도 90% 초과</text>
+  <text x="198" y="189" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">quota_percent · Codex · 300분</text>
+  <rect x="502.29999999999995" y="172" width="30" height="15" rx="8" fill="#c9824f" />
+  <circle cx="524.3" cy="179.5" r="5.5" fill="#fffdf9" />
+  <rect x="186" y="204" width="360.3" height="38" rx="9" fill="#f4eee5" />
+  <text x="198" y="220" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">월 토큰 400M 초과</text>
+  <text x="198" y="233" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">token_budget · 전체</text>
+  <rect x="502.29999999999995" y="216" width="30" height="15" rx="8" fill="#8a6f3d" />
+  <circle cx="524.3" cy="223.5" r="5.5" fill="#fffdf9" />
+  <rect x="186" y="248" width="360.3" height="38" rx="9" fill="#f4eee5" />
+  <text x="198" y="264" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">수집 5분 이상 중단</text>
+  <text x="198" y="277" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">collector_stalled · 전체</text>
+  <rect x="502.29999999999995" y="260" width="30" height="15" rx="8" fill="#6f9f8b" />
+  <circle cx="524.3" cy="267.5" r="5.5" fill="#fffdf9" />
+  <rect x="186" y="292" width="360.3" height="38" rx="9" fill="#f4eee5" />
+  <text x="198" y="308" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">월 추정 비용 $50 초과</text>
+  <text x="198" y="321" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">cost_budget · 전체</text>
+  <rect x="502.29999999999995" y="304" width="30" height="15" rx="8" fill="#e8e0d3" />
+  <circle cx="510.29999999999995" cy="311.5" r="5.5" fill="#fffdf9" />
+  <rect x="172" y="356" width="388.3" height="162" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="378" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">규칙 추가</text>
+  <text x="186.0" y="406" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">종류</text>
+  <rect x="186.0" y="412" width="174.15" height="26" rx="8" fill="#f4eee5" />
+  <text x="196.0" y="429" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">quota_percent</text>
+  <text x="370.15" y="406" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">provider</text>
+  <rect x="370.15" y="412" width="174.15" height="26" rx="8" fill="#f4eee5" />
+  <text x="380.15" y="429" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="186.0" y="454" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">임계값</text>
+  <rect x="186.0" y="460" width="174.15" height="26" rx="8" fill="#f4eee5" />
+  <text x="196.0" y="477" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">80 %</text>
+  <text x="370.15" y="454" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">창 길이</text>
+  <rect x="370.15" y="460" width="174.15" height="26" rx="8" fill="#f4eee5" />
+  <text x="380.15" y="477" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">10080분</text>
+  <rect x="470.29999999999995" y="486" width="76" height="20" rx="10" fill="#efe6d5" /><text x="508.29999999999995" y="500" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">저장</text>
+  <rect x="572.3" y="76" width="305.70000000000005" height="442" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="586.3" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">최근 알림</text>
+  <circle cx="594.3" cy="134" r="5" fill="#c9824f" />
+  <line x1="594.3" y1="141" x2="594.3" y2="176" stroke="#ddd4c8" />
+  <text x="610.3" y="130" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">주간 한도 99% 도달</text>
+  <text x="610.3" y="144" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">6분 전</text>
+  <rect x="802.0" y="122" width="62" height="20" rx="10" fill="#f7e8dc" /><text x="833.0" y="136" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">fired</text>
+  <circle cx="594.3" cy="190" r="5" fill="#6f9f8b" />
+  <line x1="594.3" y1="197" x2="594.3" y2="232" stroke="#ddd4c8" />
+  <text x="610.3" y="186" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">수집 재개</text>
+  <text x="610.3" y="200" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">32분 전</text>
+  <rect x="802.0" y="178" width="62" height="20" rx="10" fill="#e4efe9" /><text x="833.0" y="192" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">resolved</text>
+  <circle cx="594.3" cy="246" r="5" fill="#c9824f" />
+  <line x1="594.3" y1="253" x2="594.3" y2="288" stroke="#ddd4c8" />
+  <text x="610.3" y="242" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">수집 중단 감지</text>
+  <text x="610.3" y="256" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">38분 전</text>
+  <rect x="802.0" y="234" width="62" height="20" rx="10" fill="#f7e8dc" /><text x="833.0" y="248" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">fired</text>
+  <circle cx="594.3" cy="302" r="5" fill="#c9824f" />
+  <line x1="594.3" y1="309" x2="594.3" y2="344" stroke="#ddd4c8" />
+  <text x="610.3" y="298" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">5시간 한도 91%</text>
+  <text x="610.3" y="312" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">2시간 전</text>
+  <rect x="802.0" y="290" width="62" height="20" rx="10" fill="#f7e8dc" /><text x="833.0" y="304" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">fired</text>
+  <circle cx="594.3" cy="358" r="5" fill="#6f9f8b" />
+  <line x1="594.3" y1="365" x2="594.3" y2="400" stroke="#ddd4c8" />
+  <text x="610.3" y="354" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">5시간 한도 리셋</text>
+  <text x="610.3" y="368" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">3시간 전</text>
+  <rect x="802.0" y="346" width="62" height="20" rx="10" fill="#e4efe9" /><text x="833.0" y="360" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">resolved</text>
+  <circle cx="594.3" cy="414" r="5" fill="#8a6f3d" />
+  <line x1="594.3" y1="421" x2="594.3" y2="456" stroke="#ddd4c8" />
+  <text x="610.3" y="410" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">월 토큰 400M 초과</text>
+  <text x="610.3" y="424" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">어제</text>
+  <rect x="802.0" y="402" width="62" height="20" rx="10" fill="#f7e8dc" /><text x="833.0" y="416" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">fired</text>
+  <circle cx="594.3" cy="470" r="5" fill="#6f9f8b" />
+  <text x="610.3" y="466" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">수집 재개</text>
+  <text x="610.3" y="480" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">어제</text>
+  <rect x="802.0" y="458" width="62" height="20" rx="10" fill="#e4efe9" /><text x="833.0" y="472" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">resolved</text>
+</svg>

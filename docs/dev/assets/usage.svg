@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540" font-family="Segoe UI, Noto Sans KR, Helvetica, Arial, sans-serif" role="img" aria-label="usage 화면 와이어프레임">
+  <rect x="0" y="0" width="900" height="540" rx="0" fill="#f8f3eb" />
+  <rect x="0" y="0" width="150" height="540" rx="0" fill="#ece6dc" />
+  <text x="18" y="34" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">냥토큰</text>
+  <text x="18" y="52" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">트래커</text>
+  <text x="30" y="89" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">대시보드</text>
+  <circle cx="22" cy="84" r="3" fill="#8a8078" opacity="0.45" />
+  <rect x="10" y="108" width="130" height="30" rx="9" fill="#efe6d5" />
+  <text x="30" y="127" font-size="11" fill="#8a6f3d" font-weight="bold" text-anchor="start">AI 사용량</text>
+  <circle cx="22" cy="122" r="3" fill="#8a6f3d" opacity="1" />
+  <text x="30" y="165" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <circle cx="22" cy="160" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="203" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">동기화</text>
+  <circle cx="22" cy="198" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="241" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">알림</text>
+  <circle cx="22" cy="236" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="279" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">설정</text>
+  <circle cx="22" cy="274" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">AI 사용량</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">provider · 모델 · 기간 드릴다운</text>
+  <rect x="820" y="30" width="58" height="20" rx="10" fill="#efe6d5" /><text x="849.0" y="44" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">일 단위</text>
+  <rect x="744" y="30" width="68" height="20" rx="10" fill="#f4eee5" /><text x="778.0" y="44" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">CSV 내보내기</text>
+  <rect x="172" y="76" width="706" height="44" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <rect x="186" y="88" width="82" height="20" rx="10" fill="#efe6d5" /><text x="227.0" y="102" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">기간: 최근 30일</text>
+  <rect x="276" y="88" width="96" height="20" rx="10" fill="#f4eee5" /><text x="324.0" y="102" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">provider: 전체</text>
+  <rect x="380" y="88" width="54" height="20" rx="10" fill="#f4eee5" /><text x="407.0" y="102" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">모델: 전체</text>
+  <rect x="442" y="88" width="138" height="20" rx="10" fill="#f4eee5" /><text x="511.0" y="102" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">버킷: 시간 / 일 / 주 / 월</text>
+  <rect x="172" y="132" width="465.96000000000004" height="226" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="154" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">토큰 종류별 추이</text>
+  <text x="186" y="170" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">입력 · 캐시 읽기 · 캐시 쓰기 · 출력 · 추론 · 도구</text>
+  <rect x="190.0" y="305.84615384615387" width="35.79600000000001" height="16.153846153846153" rx="2" fill="#8a6f3d" />
+  <rect x="190.0" y="281.61538461538464" width="35.79600000000001" height="24.23076923076923" rx="2" fill="#6f9f8b" />
+  <rect x="190.0" y="276.2307692307693" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#789aae" />
+  <rect x="190.0" y="265.4615384615385" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#c9824f" />
+  <rect x="190.0" y="260.07692307692315" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#8876a8" />
+  <text x="207.898" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">8일</text>
+  <rect x="233.796" y="300.46153846153845" width="35.79600000000001" height="21.53846153846154" rx="2" fill="#8a6f3d" />
+  <rect x="233.796" y="262.7692307692308" width="35.79600000000001" height="37.69230769230769" rx="2" fill="#6f9f8b" />
+  <rect x="233.796" y="254.6923076923077" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#789aae" />
+  <rect x="233.796" y="241.23076923076925" width="35.79600000000001" height="13.461538461538462" rx="2" fill="#c9824f" />
+  <rect x="233.796" y="235.84615384615387" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#8876a8" />
+  <text x="251.694" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">9일</text>
+  <rect x="277.592" y="308.53846153846155" width="35.79600000000001" height="13.461538461538462" rx="2" fill="#8a6f3d" />
+  <rect x="277.592" y="278.9230769230769" width="35.79600000000001" height="29.615384615384617" rx="2" fill="#6f9f8b" />
+  <rect x="277.592" y="273.53846153846155" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#789aae" />
+  <rect x="277.592" y="257.3846153846154" width="35.79600000000001" height="16.153846153846153" rx="2" fill="#c9824f" />
+  <rect x="277.592" y="249.30769230769235" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#8876a8" />
+  <text x="295.49" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">10일</text>
+  <rect x="321.38800000000003" y="292.38461538461536" width="35.79600000000001" height="29.615384615384617" rx="2" fill="#8a6f3d" />
+  <rect x="321.38800000000003" y="243.9230769230769" width="35.79600000000001" height="48.46153846153846" rx="2" fill="#6f9f8b" />
+  <rect x="321.38800000000003" y="233.15384615384613" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#789aae" />
+  <rect x="321.38800000000003" y="214.3076923076923" width="35.79600000000001" height="18.846153846153847" rx="2" fill="#c9824f" />
+  <rect x="321.38800000000003" y="206.23076923076923" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#8876a8" />
+  <text x="339.28600000000006" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">11일</text>
+  <rect x="365.184" y="297.7692307692308" width="35.79600000000001" height="24.23076923076923" rx="2" fill="#8a6f3d" />
+  <rect x="365.184" y="257.3846153846154" width="35.79600000000001" height="40.38461538461538" rx="2" fill="#6f9f8b" />
+  <rect x="365.184" y="249.30769230769235" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#789aae" />
+  <rect x="365.184" y="233.1538461538462" width="35.79600000000001" height="16.153846153846153" rx="2" fill="#c9824f" />
+  <rect x="365.184" y="227.7692307692308" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#8876a8" />
+  <text x="383.08200000000005" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">12일</text>
+  <rect x="408.98" y="287.0" width="35.79600000000001" height="35.0" rx="2" fill="#8a6f3d" />
+  <rect x="408.98" y="230.46153846153845" width="35.79600000000001" height="56.53846153846154" rx="2" fill="#6f9f8b" />
+  <rect x="408.98" y="217.0" width="35.79600000000001" height="13.461538461538462" rx="2" fill="#789aae" />
+  <rect x="408.98" y="192.76923076923077" width="35.79600000000001" height="24.23076923076923" rx="2" fill="#c9824f" />
+  <rect x="408.98" y="182.0" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#8876a8" />
+  <text x="426.87800000000004" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">13일</text>
+  <rect x="452.77600000000007" y="303.15384615384613" width="35.79600000000001" height="18.846153846153847" rx="2" fill="#8a6f3d" />
+  <rect x="452.77600000000007" y="270.8461538461538" width="35.79600000000001" height="32.30769230769231" rx="2" fill="#6f9f8b" />
+  <rect x="452.77600000000007" y="262.7692307692307" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#789aae" />
+  <rect x="452.77600000000007" y="249.30769230769226" width="35.79600000000001" height="13.461538461538462" rx="2" fill="#c9824f" />
+  <rect x="452.77600000000007" y="243.92307692307688" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#8876a8" />
+  <text x="470.6740000000001" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">14일</text>
+  <rect x="496.57200000000006" y="295.0769230769231" width="35.79600000000001" height="26.923076923076923" rx="2" fill="#8a6f3d" />
+  <rect x="496.57200000000006" y="249.30769230769232" width="35.79600000000001" height="45.76923076923077" rx="2" fill="#6f9f8b" />
+  <rect x="496.57200000000006" y="238.53846153846155" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#789aae" />
+  <rect x="496.57200000000006" y="217.0" width="35.79600000000001" height="21.53846153846154" rx="2" fill="#c9824f" />
+  <rect x="496.57200000000006" y="208.92307692307693" width="35.79600000000001" height="8.076923076923077" rx="2" fill="#8876a8" />
+  <text x="514.47" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">15일</text>
+  <rect x="540.368" y="289.6923076923077" width="35.79600000000001" height="32.30769230769231" rx="2" fill="#8a6f3d" />
+  <rect x="540.368" y="238.53846153846152" width="35.79600000000001" height="51.15384615384615" rx="2" fill="#6f9f8b" />
+  <rect x="540.368" y="227.76923076923075" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#789aae" />
+  <rect x="540.368" y="206.2307692307692" width="35.79600000000001" height="21.53846153846154" rx="2" fill="#c9824f" />
+  <rect x="540.368" y="195.46153846153842" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#8876a8" />
+  <text x="558.2660000000001" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">16일</text>
+  <rect x="584.164" y="305.84615384615387" width="35.79600000000001" height="16.153846153846153" rx="2" fill="#8a6f3d" />
+  <rect x="584.164" y="278.92307692307696" width="35.79600000000001" height="26.923076923076923" rx="2" fill="#6f9f8b" />
+  <rect x="584.164" y="273.5384615384616" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#789aae" />
+  <rect x="584.164" y="262.76923076923083" width="35.79600000000001" height="10.76923076923077" rx="2" fill="#c9824f" />
+  <rect x="584.164" y="257.3846153846155" width="35.79600000000001" height="5.384615384615385" rx="2" fill="#8876a8" />
+  <text x="602.062" y="335" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">17일</text>
+  <rect x="190" y="338" width="9" height="9" rx="2" fill="#8a6f3d" />
+  <text x="203" y="346" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">입력</text>
+  <rect x="228" y="338" width="9" height="9" rx="2" fill="#6f9f8b" />
+  <text x="241" y="346" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">캐시 읽기</text>
+  <rect x="290" y="338" width="9" height="9" rx="2" fill="#789aae" />
+  <text x="303" y="346" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">캐시 쓰기</text>
+  <rect x="352" y="338" width="9" height="9" rx="2" fill="#c9824f" />
+  <text x="365" y="346" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">출력</text>
+  <rect x="390" y="338" width="9" height="9" rx="2" fill="#8876a8" />
+  <text x="403" y="346" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">추론</text>
+  <rect x="649.96" y="132" width="228.03999999999996" height="226" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="663.96" y="154" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">모델별 비중</text>
+  <text x="663.96" y="186" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">gpt-5-codex</text>
+  <text x="864.0" y="186" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="end">194.9M</text>
+  <rect x="663.96" y="194" width="200.03999999999996" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="663.96" y="194" width="122.02439999999997" height="8" rx="4" fill="#8a6f3d" />
+  <text x="663.96" y="230" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">gpt-5</text>
+  <text x="864.0" y="230" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="end">76.7M</text>
+  <rect x="663.96" y="238" width="200.03999999999996" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="663.96" y="238" width="48.00959999999999" height="8" rx="4" fill="#6f9f8b" />
+  <text x="663.96" y="274" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">o4-mini</text>
+  <text x="864.0" y="274" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="end">35.2M</text>
+  <rect x="663.96" y="282" width="200.03999999999996" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="663.96" y="282" width="22.004399999999997" height="8" rx="4" fill="#789aae" />
+  <text x="663.96" y="318" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">기타</text>
+  <text x="864.0" y="318" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="end">12.8M</text>
+  <rect x="663.96" y="326" width="200.03999999999996" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="663.96" y="326" width="8.001599999999998" height="8" rx="4" fill="#c9824f" />
+  <rect x="172" y="370" width="706" height="148" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="392" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">기간 내 상세</text>
+  <rect x="770" y="378" width="108" height="20" rx="10" fill="#efe6d5" /><text x="824.0" y="392" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">측정 품질별 분리 표시</text>
+  <text x="186.0" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">날짜</text>
+  <text x="270.75" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">provider</text>
+  <text x="355.5" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">모델</text>
+  <text x="440.25" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">입력</text>
+  <text x="525.0" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">캐시</text>
+  <text x="609.75" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">출력</text>
+  <text x="694.5" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">합계</text>
+  <text x="779.25" y="412" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">품질</text>
+  <line x1="186" y1="424" x2="864" y2="424" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="443" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">08-20</text>
+  <text x="270.75" y="443" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="355.5" y="443" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">gpt-5-codex</text>
+  <text x="440.25" y="443" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">12.4M</text>
+  <text x="525.0" y="443" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">11.8M</text>
+  <text x="609.75" y="443" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">86K</text>
+  <text x="694.5" y="443" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">12.5M</text>
+  <rect x="777.25" y="429" width="46" height="20" rx="10" fill="#e4efe9" /><text x="800.25" y="443" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">로컬 관측</text>
+  <line x1="186" y1="452" x2="864" y2="452" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="471" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">08-20</text>
+  <text x="270.75" y="471" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Claude</text>
+  <text x="355.5" y="471" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">sonnet-5</text>
+  <text x="440.25" y="471" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">0</text>
+  <text x="525.0" y="471" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">2.1M</text>
+  <text x="609.75" y="471" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">41K</text>
+  <text x="694.5" y="471" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">2.1M</text>
+  <rect x="777.25" y="457" width="46" height="20" rx="10" fill="#f4eee5" /><text x="800.25" y="471" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">미확인</text>
+  <line x1="186" y1="480" x2="864" y2="480" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="499" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">08-19</text>
+  <text x="270.75" y="499" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="355.5" y="499" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">gpt-5</text>
+  <text x="440.25" y="499" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">9.1M</text>
+  <text x="525.0" y="499" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">8.7M</text>
+  <text x="609.75" y="499" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">62K</text>
+  <text x="694.5" y="499" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">9.2M</text>
+  <rect x="777.25" y="485" width="46" height="20" rx="10" fill="#e4efe9" /><text x="800.25" y="499" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">로컬 관측</text>
+</svg>

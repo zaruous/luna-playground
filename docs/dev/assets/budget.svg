@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540" font-family="Segoe UI, Noto Sans KR, Helvetica, Arial, sans-serif" role="img" aria-label="budget 화면 와이어프레임">
+  <rect x="0" y="0" width="900" height="540" rx="0" fill="#f8f3eb" />
+  <rect x="0" y="0" width="150" height="540" rx="0" fill="#ece6dc" />
+  <text x="18" y="34" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">냥토큰</text>
+  <text x="18" y="52" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">트래커</text>
+  <text x="30" y="89" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">대시보드</text>
+  <circle cx="22" cy="84" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="127" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">AI 사용량</text>
+  <circle cx="22" cy="122" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="165" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <circle cx="22" cy="160" r="3" fill="#8a8078" opacity="0.45" />
+  <rect x="10" y="184" width="130" height="30" rx="9" fill="#efe6d5" />
+  <text x="30" y="203" font-size="11" fill="#8a6f3d" font-weight="bold" text-anchor="start">동기화</text>
+  <circle cx="22" cy="198" r="3" fill="#8a6f3d" opacity="1" />
+  <text x="30" y="241" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">알림</text>
+  <circle cx="22" cy="236" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="279" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">설정</text>
+  <circle cx="22" cy="274" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">동기화</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">provider 연결 · 수집 상태 · 대조 이력</text>
+  <rect x="820" y="30" width="58" height="20" rx="10" fill="#f4eee5" /><text x="849.0" y="44" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">진단 보기</text>
+  <rect x="754" y="30" width="58" height="20" rx="10" fill="#efe6d5" /><text x="783.0" y="44" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">전체 재스캔</text>
+  <rect x="172.0" y="76" width="167.5" height="92" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="184.0" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">Codex</text>
+  <rect x="184.0" y="108" width="46" height="20" rx="10" fill="#e4efe9" /><text x="207.0" y="122" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">연결됨</text>
+  <text x="184.0" y="146" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">705 파일 · 감시 중</text>
+  <text x="327.5" y="98" font-size="8" fill="#8a6f3d" font-weight="normal" text-anchor="end">설정 →</text>
+  <rect x="351.5" y="76" width="167.5" height="92" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="363.5" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">Claude</text>
+  <rect x="363.5" y="108" width="46" height="20" rx="10" fill="#f4eee5" /><text x="386.5" y="122" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">준비 중</text>
+  <text x="363.5" y="146" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">어댑터 M3</text>
+  <text x="507.0" y="98" font-size="8" fill="#8a6f3d" font-weight="normal" text-anchor="end">설정 →</text>
+  <rect x="531.0" y="76" width="167.5" height="92" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="543.0" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">Cursor</text>
+  <rect x="543.0" y="108" width="65" height="20" rx="10" fill="#f7e8dc" /><text x="575.5" y="122" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">API 키 필요</text>
+  <text x="543.0" y="146" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">팀 플랜 전용</text>
+  <text x="686.5" y="98" font-size="8" fill="#8a6f3d" font-weight="normal" text-anchor="end">설정 →</text>
+  <rect x="710.5" y="76" width="167.5" height="92" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="722.5" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">Gemini</text>
+  <rect x="722.5" y="108" width="46" height="20" rx="10" fill="#f4eee5" /><text x="745.5" y="122" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">준비 중</text>
+  <text x="722.5" y="146" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">어댑터 M5</text>
+  <text x="866.0" y="98" font-size="8" fill="#8a6f3d" font-weight="normal" text-anchor="end">설정 →</text>
+  <rect x="172" y="180" width="706" height="74" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="202" font-size="11" fill="#302b28" font-weight="bold" text-anchor="start">Codex lifecycle Hook</text>
+  <text x="186" y="218" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">~/.codex/hooks.json · SessionStart · UserPromptSubmit · Stop · SessionEnd</text>
+  <text x="186" y="236" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start" opacity="0.85">가속 경로일 뿐이며 수집 근거는 항상 rollout 로그입니다</text>
+  <rect x="770" y="196" width="94" height="20" rx="10" fill="#efe6d5" /><text x="817.0" y="210" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">Hook 설치</text>
+  <rect x="770" y="222" width="94" height="20" rx="10" fill="#f4eee5" /><text x="817.0" y="236" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">백업 파일 보기</text>
+  <rect x="172" y="266" width="367.12" height="130" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="288" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">서버 한도 이력</text>
+  <text x="186" y="303" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">limit_id · window별 snapshot (percent)</text>
+  <path d="M192.0,366.36 L232.89,358.3 L273.78,350.24 L314.67,352.72 L355.56,342.18 L396.45,334.74 L437.34000000000003,325.44 L478.23,322.96 L519.12,318.62" fill="none" stroke="#c9824f" stroke-width="2" />
+  <circle cx="192.0" cy="366.36" r="2.5" fill="#c9824f" />
+  <circle cx="232.89" cy="358.3" r="2.5" fill="#c9824f" />
+  <circle cx="273.78" cy="350.24" r="2.5" fill="#c9824f" />
+  <circle cx="314.67" cy="352.72" r="2.5" fill="#c9824f" />
+  <circle cx="355.56" cy="342.18" r="2.5" fill="#c9824f" />
+  <circle cx="396.45" cy="334.74" r="2.5" fill="#c9824f" />
+  <circle cx="437.34000000000003" cy="325.44" r="2.5" fill="#c9824f" />
+  <circle cx="478.23" cy="322.96" r="2.5" fill="#c9824f" />
+  <circle cx="519.12" cy="318.62" r="2.5" fill="#c9824f" />
+  <line x1="192" y1="380" x2="519.12" y2="380" stroke="#ddd4c8" />
+  <rect x="551.12" y="266" width="326.88" height="130" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="565.12" y="288" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">대조 이력</text>
+  <rect x="565.12" y="304" width="138" height="20" rx="10" fill="#e4efe9" /><text x="634.12" y="318" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">MATCHED_ACTIVITY</text>
+  <text x="711.12" y="318" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">서버·로컬 동시 증가</text>
+  <rect x="565.12" y="334" width="138" height="20" rx="10" fill="#f7e8dc" /><text x="634.12" y="348" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">SERVER_ONLY_CHANGE</text>
+  <text x="711.12" y="348" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">로컬 근거 없음</text>
+  <rect x="565.12" y="364" width="138" height="20" rx="10" fill="#f4eee5" /><text x="634.12" y="378" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">LOCAL_ONLY_ACTIVITY</text>
+  <text x="711.12" y="378" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">서버 미반영</text>
+  <rect x="172" y="408" width="706" height="110" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="430" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">진단</text>
+  <text x="186.0" y="456" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">SQLite</text>
+  <text x="186.0" y="472" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">usage.sqlite3</text>
+  <text x="412.0" y="456" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">세션</text>
+  <text x="412.0" y="472" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">1,204</text>
+  <text x="638.0" y="456" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">사용 이벤트</text>
+  <text x="638.0" y="472" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">2,994</text>
+  <text x="186.0" y="488" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">한도 snapshot</text>
+  <text x="186.0" y="504" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">618</text>
+  <text x="412.0" y="488" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">스캔 파일</text>
+  <text x="412.0" y="504" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">705</text>
+  <text x="638.0" y="488" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">누적 리셋</text>
+  <text x="638.0" y="504" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">12</text>
+</svg>

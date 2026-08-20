@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540" font-family="Segoe UI, Noto Sans KR, Helvetica, Arial, sans-serif" role="img" aria-label="dashboard 화면 와이어프레임">
+  <rect x="0" y="0" width="900" height="540" rx="0" fill="#f8f3eb" />
+  <rect x="0" y="0" width="150" height="540" rx="0" fill="#ece6dc" />
+  <text x="18" y="34" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">냥토큰</text>
+  <text x="18" y="52" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">트래커</text>
+  <rect x="10" y="70" width="130" height="30" rx="9" fill="#efe6d5" />
+  <text x="30" y="89" font-size="11" fill="#8a6f3d" font-weight="bold" text-anchor="start">대시보드</text>
+  <circle cx="22" cy="84" r="3" fill="#8a6f3d" opacity="1" />
+  <text x="30" y="127" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">AI 사용량</text>
+  <circle cx="22" cy="122" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="165" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <circle cx="22" cy="160" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="203" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">동기화</text>
+  <circle cx="22" cy="198" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="241" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">알림</text>
+  <circle cx="22" cy="236" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="279" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">설정</text>
+  <circle cx="22" cy="274" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">대시보드</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">로컬 관측과 서버 흐름을 한 화면에서</text>
+  <rect x="820" y="30" width="58" height="20" rx="10" fill="#f4eee5" /><text x="849.0" y="44" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">지금 동기화</text>
+  <rect x="744" y="30" width="68" height="20" rx="10" fill="#efe6d5" /><text x="778.0" y="44" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">기간: 이번 달</text>
+  <rect x="172.0" y="76" width="167.5" height="84" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="184.0" y="96" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">이번 달 총 토큰</text>
+  <text x="184.0" y="122" font-size="19" fill="#302b28" font-weight="bold" text-anchor="start">319.6M</text>
+  <text x="184.0" y="142" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">로컬 관측</text>
+  <rect x="277.5" y="121.33333333333333" width="5.833333333333333" height="8.666666666666666" rx="2" fill="#302b28" />
+  <rect x="286.3333333333333" y="115.55555555555556" width="5.833333333333333" height="14.444444444444445" rx="2" fill="#302b28" />
+  <rect x="295.1666666666667" y="118.44444444444444" width="5.833333333333333" height="11.555555555555555" rx="2" fill="#302b28" />
+  <rect x="304.0" y="109.77777777777777" width="5.833333333333333" height="20.22222222222222" rx="2" fill="#302b28" />
+  <rect x="312.8333333333333" y="112.66666666666667" width="5.833333333333333" height="17.333333333333332" rx="2" fill="#302b28" />
+  <rect x="321.66666666666663" y="104.0" width="5.833333333333333" height="26.0" rx="2" fill="#302b28" />
+  <rect x="351.5" y="76" width="167.5" height="84" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="363.5" y="96" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">캐시 적중</text>
+  <text x="363.5" y="122" font-size="19" fill="#6f9f8b" font-weight="bold" text-anchor="start">96%</text>
+  <text x="363.5" y="142" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">306.7M cached</text>
+  <rect x="457.0" y="121.33333333333333" width="5.833333333333333" height="8.666666666666666" rx="2" fill="#6f9f8b" />
+  <rect x="465.8333333333333" y="115.55555555555556" width="5.833333333333333" height="14.444444444444445" rx="2" fill="#6f9f8b" />
+  <rect x="474.6666666666667" y="118.44444444444444" width="5.833333333333333" height="11.555555555555555" rx="2" fill="#6f9f8b" />
+  <rect x="483.5" y="109.77777777777777" width="5.833333333333333" height="20.22222222222222" rx="2" fill="#6f9f8b" />
+  <rect x="492.3333333333333" y="112.66666666666667" width="5.833333333333333" height="17.333333333333332" rx="2" fill="#6f9f8b" />
+  <rect x="501.16666666666663" y="104.0" width="5.833333333333333" height="26.0" rx="2" fill="#6f9f8b" />
+  <rect x="531.0" y="76" width="167.5" height="84" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="543.0" y="96" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">서버 주간 한도</text>
+  <text x="543.0" y="122" font-size="19" fill="#c9824f" font-weight="bold" text-anchor="start">99%</text>
+  <text x="543.0" y="142" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">서버 관측 · 6분 전</text>
+  <rect x="636.5" y="121.33333333333333" width="5.833333333333333" height="8.666666666666666" rx="2" fill="#c9824f" />
+  <rect x="645.3333333333334" y="115.55555555555556" width="5.833333333333333" height="14.444444444444445" rx="2" fill="#c9824f" />
+  <rect x="654.1666666666666" y="118.44444444444444" width="5.833333333333333" height="11.555555555555555" rx="2" fill="#c9824f" />
+  <rect x="663.0" y="109.77777777777777" width="5.833333333333333" height="20.22222222222222" rx="2" fill="#c9824f" />
+  <rect x="671.8333333333334" y="112.66666666666667" width="5.833333333333333" height="17.333333333333332" rx="2" fill="#c9824f" />
+  <rect x="680.6666666666666" y="104.0" width="5.833333333333333" height="26.0" rx="2" fill="#c9824f" />
+  <rect x="710.5" y="76" width="167.5" height="84" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="722.5" y="96" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">수집 중 AI</text>
+  <text x="722.5" y="122" font-size="19" fill="#8876a8" font-weight="bold" text-anchor="start">Codex</text>
+  <text x="722.5" y="142" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">705개 세션 파일</text>
+  <rect x="816.0" y="121.33333333333333" width="5.833333333333333" height="8.666666666666666" rx="2" fill="#8876a8" />
+  <rect x="824.8333333333334" y="115.55555555555556" width="5.833333333333333" height="14.444444444444445" rx="2" fill="#8876a8" />
+  <rect x="833.6666666666666" y="118.44444444444444" width="5.833333333333333" height="11.555555555555555" rx="2" fill="#8876a8" />
+  <rect x="842.5" y="109.77777777777777" width="5.833333333333333" height="20.22222222222222" rx="2" fill="#8876a8" />
+  <rect x="851.3333333333334" y="112.66666666666667" width="5.833333333333333" height="17.333333333333332" rx="2" fill="#8876a8" />
+  <rect x="860.1666666666666" y="104.0" width="5.833333333333333" height="26.0" rx="2" fill="#8876a8" />
+  <rect x="172" y="172" width="409.47999999999996" height="168" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="194" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">provider별 사용량</text>
+  <text x="186" y="210" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">측정 품질 배지와 함께 표시</text>
+  <text x="186" y="240" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">Codex</text>
+  <rect x="238" y="228" width="199.47999999999996" height="16" rx="4" fill="#e8e0d3" />
+  <rect x="238" y="228" width="189.50599999999994" height="16" rx="4" fill="#8a6f3d" />
+  <text x="511.48" y="240" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">319.6M</text>
+  <rect x="521.48" y="226" width="46" height="20" rx="10" fill="#e4efe9" /><text x="544.48" y="240" font-size="9" fill="#6f9f8b" font-weight="normal" text-anchor="middle">로컬 관측</text>
+  <text x="186" y="267" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">Claude</text>
+  <rect x="238" y="255" width="199.47999999999996" height="16" rx="4" fill="#e8e0d3" />
+  <rect x="238" y="255" width="83.78159999999998" height="16" rx="4" fill="#c9824f" />
+  <text x="511.48" y="267" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">—</text>
+  <rect x="521.48" y="253" width="46" height="20" rx="10" fill="#f4eee5" /><text x="544.48" y="267" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">미확인</text>
+  <text x="186" y="294" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">Cursor</text>
+  <rect x="238" y="282" width="199.47999999999996" height="16" rx="4" fill="#e8e0d3" />
+  <text x="511.48" y="294" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">—</text>
+  <rect x="521.48" y="280" width="46" height="20" rx="10" fill="#f4eee5" /><text x="544.48" y="294" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">미연결</text>
+  <text x="186" y="321" font-size="9.5" fill="#302b28" font-weight="normal" text-anchor="start">Gemini</text>
+  <rect x="238" y="309" width="199.47999999999996" height="16" rx="4" fill="#e8e0d3" />
+  <text x="511.48" y="321" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">—</text>
+  <rect x="521.48" y="307" width="46" height="20" rx="10" fill="#f4eee5" /><text x="544.48" y="321" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">미연결</text>
+  <rect x="593.48" y="172" width="284.52" height="168" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="607.48" y="194" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">서버 한도</text>
+  <text x="607.48" y="226" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">5시간 창</text>
+  <text x="864.0" y="226" font-size="11" fill="#6f9f8b" font-weight="bold" text-anchor="end">31%</text>
+  <rect x="607.48" y="234" width="256.52" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="607.48" y="234" width="79.5212" height="8" rx="4" fill="#6f9f8b" />
+  <text x="607.48" y="256" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">리셋까지 2일 4시간</text>
+  <text x="607.48" y="278" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">주간 창</text>
+  <text x="864.0" y="278" font-size="11" fill="#c9824f" font-weight="bold" text-anchor="end">99%</text>
+  <rect x="607.48" y="286" width="256.52" height="8" rx="4" fill="#e8e0d3" />
+  <rect x="607.48" y="286" width="253.95479999999998" height="8" rx="4" fill="#c9824f" />
+  <text x="607.48" y="308" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">리셋까지 2일 4시간</text>
+  <rect x="593.48" y="322" width="284.52" height="18" rx="6" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="603.48" y="335" font-size="8.5" fill="#8a6f3d" font-weight="normal" text-anchor="start">미확인 서버 사용량 3건 →</text>
+  <rect x="172" y="352" width="706" height="166" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="374" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">프로젝트</text>
+  <text x="864" y="374" font-size="8.5" fill="#8a6f3d" font-weight="normal" text-anchor="end">전체 보기 →</text>
+  <text x="186.0" y="392" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <text x="355.5" y="392" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">AI</text>
+  <text x="525.0" y="392" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">토큰</text>
+  <text x="694.5" y="392" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">세션</text>
+  <line x1="186" y1="404" x2="864" y2="404" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="421" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">luna-playground</text>
+  <text x="355.5" y="421" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="525.0" y="421" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">181.2M</text>
+  <text x="694.5" y="421" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">412</text>
+  <line x1="186" y1="430" x2="864" y2="430" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="447" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">mes-portal</text>
+  <text x="355.5" y="447" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="525.0" y="447" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">74.5M</text>
+  <text x="694.5" y="447" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">190</text>
+  <line x1="186" y1="456" x2="864" y2="456" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="473" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">nyang-docs</text>
+  <text x="355.5" y="473" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="525.0" y="473" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">38.1M</text>
+  <text x="694.5" y="473" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">96</text>
+  <line x1="186" y1="482" x2="864" y2="482" stroke="#ddd4c8" stroke-dasharray="3 3" />
+  <text x="186.0" y="499" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">agent-lab</text>
+  <text x="355.5" y="499" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">Codex</text>
+  <text x="525.0" y="499" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">25.8M</text>
+  <text x="694.5" y="499" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">61</text>
+</svg>

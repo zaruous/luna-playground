@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" width="900" height="540" font-family="Segoe UI, Noto Sans KR, Helvetica, Arial, sans-serif" role="img" aria-label="settings 화면 와이어프레임">
+  <rect x="0" y="0" width="900" height="540" rx="0" fill="#f8f3eb" />
+  <rect x="0" y="0" width="150" height="540" rx="0" fill="#ece6dc" />
+  <text x="18" y="34" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">냥토큰</text>
+  <text x="18" y="52" font-size="14" fill="#302b28" font-weight="bold" text-anchor="start">트래커</text>
+  <text x="30" y="89" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">대시보드</text>
+  <circle cx="22" cy="84" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="127" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">AI 사용량</text>
+  <circle cx="22" cy="122" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="165" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트</text>
+  <circle cx="22" cy="160" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="203" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">동기화</text>
+  <circle cx="22" cy="198" r="3" fill="#8a8078" opacity="0.45" />
+  <text x="30" y="241" font-size="11" fill="#8a8078" font-weight="normal" text-anchor="start">알림</text>
+  <circle cx="22" cy="236" r="3" fill="#8a8078" opacity="0.45" />
+  <rect x="10" y="260" width="130" height="30" rx="9" fill="#efe6d5" />
+  <text x="30" y="279" font-size="11" fill="#8a6f3d" font-weight="bold" text-anchor="start">설정</text>
+  <circle cx="22" cy="274" r="3" fill="#8a6f3d" opacity="1" />
+  <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">설정</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">수집 · 자격증명 · 데이터 · 표시</text>
+  <rect x="820" y="30" width="58" height="20" rx="10" fill="#efe6d5" /><text x="849.0" y="44" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">변경 저장</text>
+  <rect x="172" y="76" width="347.0" height="150" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">일반</text>
+  <text x="186" y="130" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">고양이 스킨</text>
+  <text x="505.0" y="130" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">블랙냥</text>
+  <text x="186" y="156" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">집계 기준</text>
+  <text x="505.0" y="156" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">월 · 로컬 시간대</text>
+  <text x="186" y="182" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">기간 시작일</text>
+  <text x="505.0" y="182" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">1일</text>
+  <text x="186" y="208" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">숫자 표기</text>
+  <text x="505.0" y="208" font-size="9" fill="#302b28" font-weight="normal" text-anchor="end">약식 (319.6M)</text>
+  <rect x="172" y="238" width="347.0" height="168" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="260" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">provider 자격증명</text>
+  <text x="186" y="276" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">공식 API 키만 사용합니다. 다른 앱의 쿠키·키체인은 읽지 않습니다.</text>
+  <text x="186" y="300" font-size="9" fill="#302b28" font-weight="normal" text-anchor="start">Cursor Admin API 키</text>
+  <rect x="186" y="308" width="319.0" height="26" rx="8" fill="#f4eee5" />
+  <text x="196" y="325" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="start">••••••••••••••••••••  (저장됨)</text>
+  <text x="186" y="352" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">마지막 사용: 12분 전 · 값 회수 API 없음</text>
+  <rect x="186" y="366" width="70" height="20" rx="10" fill="#efe6d5" /><text x="221.0" y="380" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">키 교체</text>
+  <rect x="264" y="366" width="70" height="20" rx="10" fill="#f4eee5" /><text x="299.0" y="380" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">키 삭제</text>
+  <rect x="172" y="418" width="347.0" height="100" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="440" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">텔레메트리 (선택)</text>
+  <text x="186" y="456" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">Claude Code OTLP 수신으로 서브에이전트 사용량 분리</text>
+  <rect x="186" y="466" width="319.0" height="24" rx="6" fill="#f4eee5" />
+  <text x="194" y="482" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:47899</text>
+  <rect x="531.0" y="76" width="347.0" height="176" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="545.0" y="98" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">데이터</text>
+  <text x="545.0" y="118" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">SQLite 위치</text>
+  <text x="545.0" y="134" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">%APPDATA%/nyang-token-tracker/usage.sqlite3</text>
+  <text x="545.0" y="158" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">서비스 주소</text>
+  <text x="545.0" y="174" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">http://127.0.0.1:47831 · 루프백 전용</text>
+  <rect x="545.0" y="198" width="88" height="20" rx="10" fill="#efe6d5" /><text x="589.0" y="212" font-size="9" fill="#8a6f3d" font-weight="normal" text-anchor="middle">원장 내보내기</text>
+  <rect x="641.0" y="198" width="88" height="20" rx="10" fill="#f4eee5" /><text x="685.0" y="212" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">가져오기</text>
+  <rect x="737.0" y="198" width="88" height="20" rx="10" fill="#f7e8dc" /><text x="781.0" y="212" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">전체 삭제</text>
+  <text x="545.0" y="240" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">삭제는 되돌릴 수 없습니다</text>
+  <rect x="531.0" y="264" width="347.0" height="142" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="545.0" y="286" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">프로젝트 별칭 · 가림</text>
+  <text x="545.0" y="316" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">D:/git/node/luna-playground</text>
+  <text x="808.0" y="316" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="end">luna</text>
+  <rect x="816.0" y="304" width="48" height="20" rx="10" fill="#f4eee5" /><text x="840.0" y="318" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">표시</text>
+  <text x="545.0" y="350" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">D:/work/mes-portal</text>
+  <text x="808.0" y="350" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="end">mes</text>
+  <rect x="816.0" y="338" width="48" height="20" rx="10" fill="#f4eee5" /><text x="840.0" y="352" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">표시</text>
+  <text x="545.0" y="384" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">••••••••••••••</text>
+  <text x="808.0" y="384" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="end">(가림)</text>
+  <rect x="816.0" y="372" width="48" height="20" rx="10" fill="#f7e8dc" /><text x="840.0" y="386" font-size="9" fill="#c9824f" font-weight="normal" text-anchor="middle">가림</text>
+  <rect x="531.0" y="418" width="347.0" height="100" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="545.0" y="440" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">정보</text>
+  <text x="545.0" y="456" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">버전</text>
+  <text x="864.0" y="456" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">0.4.0</text>
+  <text x="545.0" y="476" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">수집 provider</text>
+  <text x="864.0" y="476" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">Codex (1/4)</text>
+  <text x="545.0" y="496" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">가격 데이터</text>
+  <text x="864.0" y="496" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">미구성 — M7</text>
+</svg>
