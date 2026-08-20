@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { isoNow, projectNameFromCwd } from './utils.mjs';
+import { isoNow, projectKeyOf, projectNameFromCwd } from './utils.mjs';
 
 function normalizeProviderId(value) {
   const provider = String(value ?? '').trim().toLowerCase();
@@ -149,6 +149,15 @@ export class UsageStore {
         last_session_id TEXT,
         updated_at TEXT NOT NULL,
         PRIMARY KEY(provider, source_path)
+      );
+
+      CREATE TABLE IF NOT EXISTS project_aliases (
+        provider TEXT NOT NULL,
+        project_key TEXT NOT NULL,
+        alias TEXT NOT NULL,
+        redacted INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (provider, project_key)
       );
 
       CREATE INDEX IF NOT EXISTS idx_usage_events_provider_time ON usage_events(provider, observed_at);
@@ -651,7 +660,8 @@ export class UsageStore {
       ORDER BY total_tokens DESC
       LIMIT ?
     `).all(...args);
-    return rows.map((row) => ({
+    const aliases = this.#aliasIndex();
+    return rows.map((row) => this.#applyProjectPrivacy({
       provider: row.provider,
       name: row.project_name,
       cwd: row.cwd,
@@ -660,7 +670,7 @@ export class UsageStore {
       inputTokens: Number(row.input_tokens) || 0,
       cachedInputTokens: Number(row.cached_input_tokens) || 0,
       lastActivity: row.last_activity,
-    }));
+    }, aliases));
   }
 
   getRecentReconciliation(provider = 'codex', limit = 12) {
@@ -681,6 +691,255 @@ export class UsageStore {
       classification: row.classification,
       confidence: row.confidence,
     }));
+  }
+
+  // ---- M2 집계 계층 ----------------------------------------------------
+  // 버킷 경계는 반드시 로컬 시간대로 끊습니다. 엔진이 월 합계를
+  // startOfLocalMonthIso()로 계산하므로, 여기서 UTC로 끊으면 이 화면의 월
+  // 합계가 대시보드 총합과 어긋납니다(docs/dev/menus/usage.md).
+  static BUCKET_FORMATS = Object.freeze({
+    hour: '%Y-%m-%dT%H:00',
+    day: '%Y-%m-%d',
+    week: '%Y-W%W',
+    month: '%Y-%m',
+  });
+
+  #tokenSums(prefix = '') {
+    return `
+      COALESCE(SUM(${prefix}input_tokens),0) AS input_tokens,
+      COALESCE(SUM(${prefix}cached_input_tokens),0) AS cached_input_tokens,
+      COALESCE(SUM(${prefix}cache_write_input_tokens),0) AS cache_write_input_tokens,
+      COALESCE(SUM(${prefix}output_tokens),0) AS output_tokens,
+      COALESCE(SUM(${prefix}reasoning_tokens),0) AS reasoning_tokens,
+      COALESCE(SUM(${prefix}total_tokens),0) AS total_tokens,
+      COUNT(*) AS event_count
+    `;
+  }
+
+  #tokensFrom(row) {
+    return {
+      inputTokens: Number(row.input_tokens) || 0,
+      cachedInputTokens: Number(row.cached_input_tokens) || 0,
+      cacheWriteInputTokens: Number(row.cache_write_input_tokens) || 0,
+      outputTokens: Number(row.output_tokens) || 0,
+      reasoningTokens: Number(row.reasoning_tokens) || 0,
+      totalTokens: Number(row.total_tokens) || 0,
+      eventCount: Number(row.event_count) || 0,
+    };
+  }
+
+  #usageFilter({ provider = null, model = null, since = null, until = null } = {}) {
+    const clauses = [];
+    const args = [];
+    if (provider) { clauses.push('provider = ?'); args.push(provider); }
+    if (model) { clauses.push('model = ?'); args.push(model); }
+    if (since) { clauses.push('COALESCE(event_timestamp, observed_at) >= ?'); args.push(since); }
+    if (until) { clauses.push('COALESCE(event_timestamp, observed_at) < ?'); args.push(until); }
+    return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', args };
+  }
+
+  getUsageTimeseries({ provider = null, model = null, bucket = 'day', since = null, until = null } = {}) {
+    const format = UsageStore.BUCKET_FORMATS[bucket] ?? UsageStore.BUCKET_FORMATS.day;
+    const resolvedBucket = UsageStore.BUCKET_FORMATS[bucket] ? bucket : 'day';
+    const { where, args } = this.#usageFilter({ provider, model, since, until });
+    const rows = this.db.prepare(`
+      SELECT
+        strftime('${format}', COALESCE(event_timestamp, observed_at), 'localtime') AS bucket_start,
+        provider,
+        ${this.#tokenSums()}
+      FROM usage_events
+      ${where}
+      GROUP BY bucket_start, provider
+      ORDER BY bucket_start ASC, provider ASC
+    `).all(...args);
+    return {
+      bucket: resolvedBucket,
+      series: rows.map((row) => ({
+        bucketStart: row.bucket_start,
+        provider: row.provider,
+        tokens: this.#tokensFrom(row),
+      })),
+    };
+  }
+
+  getModelBreakdown({ provider = null, since = null, until = null } = {}) {
+    const { where, args } = this.#usageFilter({ provider, since, until });
+    const rows = this.db.prepare(`
+      SELECT provider, COALESCE(NULLIF(model,''), '(모델 미기록)') AS model, ${this.#tokenSums()}
+      FROM usage_events
+      ${where}
+      GROUP BY provider, model
+      ORDER BY total_tokens DESC
+    `).all(...args);
+    const grandTotal = rows.reduce((sum, row) => sum + (Number(row.total_tokens) || 0), 0);
+    return {
+      totalTokens: grandTotal,
+      models: rows.map((row) => {
+        const tokens = this.#tokensFrom(row);
+        return {
+          provider: row.provider,
+          model: row.model,
+          tokens,
+          share: grandTotal > 0 ? tokens.totalTokens / grandTotal : 0,
+        };
+      }),
+    };
+  }
+
+  getProjectAliases() {
+    return this.db.prepare('SELECT provider, project_key, alias, redacted FROM project_aliases').all().map((row) => ({
+      provider: row.provider,
+      projectKey: row.project_key,
+      alias: row.alias,
+      redacted: Number(row.redacted) === 1,
+    }));
+  }
+
+  setProjectAlias({ provider, projectKey, alias = null, redacted = false }) {
+    if (!provider || !projectKey) throw new TypeError('provider and projectKey are required');
+    this.db.prepare(`
+      INSERT INTO project_aliases (provider, project_key, alias, redacted, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(provider, project_key) DO UPDATE SET
+        alias = excluded.alias, redacted = excluded.redacted, updated_at = excluded.updated_at
+    `).run(provider, projectKey, alias ?? '', redacted ? 1 : 0, isoNow());
+    return this.getProjectAliases().find((row) => row.provider === provider && row.projectKey === projectKey) ?? null;
+  }
+
+  #aliasIndex() {
+    const index = new Map();
+    for (const row of this.getProjectAliases()) index.set(`${row.provider}|${row.projectKey}`, row);
+    return index;
+  }
+
+  // 가림은 서비스가 응답을 만들 때 적용합니다. 클라이언트에서 가리면 원본
+  // 경로가 HTTP 응답에 그대로 남습니다(docs/dev/menus/project.md).
+  #applyProjectPrivacy(project, aliases = this.#aliasIndex()) {
+    const projectKey = projectKeyOf(project.provider, project.name);
+    const alias = aliases.get(`${project.provider}|${projectKey}`) ?? null;
+    if (alias?.redacted) {
+      return { ...project, projectKey, name: alias.alias || `(가림) ${projectKey.slice(0, 4)}`, cwd: null, redacted: true, alias: alias.alias || null };
+    }
+    return { ...project, projectKey, name: alias?.alias || project.name, cwd: project.cwd ?? null, redacted: false, alias: alias?.alias || null };
+  }
+
+  getProjectBreakdown({ provider = null, since = null, until = null, limit = 100 } = {}) {
+    const { where, args } = this.#usageFilter({ provider, since, until });
+    const rows = this.db.prepare(`
+      SELECT
+        provider,
+        COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name,
+        MAX(cwd) AS cwd,
+        MAX(model) AS model,
+        COUNT(DISTINCT session_id) AS session_count,
+        COUNT(DISTINCT model) AS model_count,
+        MAX(COALESCE(event_timestamp, observed_at)) AS last_activity,
+        ${this.#tokenSums()}
+      FROM usage_events
+      ${where}
+      GROUP BY provider, project_name
+      ORDER BY total_tokens DESC
+      LIMIT ?
+    `).all(...args, limit);
+    const aliases = this.#aliasIndex();
+    return rows.map((row) => this.#applyProjectPrivacy({
+      provider: row.provider,
+      name: row.project_name,
+      cwd: row.cwd,
+      model: row.model,
+      sessionCount: Number(row.session_count) || 0,
+      modelCount: Number(row.model_count) || 0,
+      lastActivity: row.last_activity,
+      tokens: this.#tokensFrom(row),
+      totalTokens: Number(row.total_tokens) || 0,
+    }, aliases));
+  }
+
+  // project_key는 해시라 SQL에서 역산할 수 없습니다. 그룹 목록에서 해시를
+  // 계산해 대조합니다 — 프로젝트 수가 수십 단위라 비용이 무시할 수준입니다.
+  #resolveProjectKey(projectKey) {
+    const rows = this.db.prepare(`
+      SELECT DISTINCT provider, COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name FROM usage_events
+    `).all();
+    return rows
+      .map((row) => ({ provider: row.provider, name: row.project_name }))
+      .find((row) => projectKeyOf(row.provider, row.name) === projectKey) ?? null;
+  }
+
+  getProjectDetail({ projectKey, since = null, until = null } = {}) {
+    const target = this.#resolveProjectKey(projectKey);
+    if (!target) return null;
+    const [project] = this.getProjectBreakdown({ provider: target.provider, since, until, limit: 1000 })
+      .filter((row) => row.projectKey === projectKey);
+    if (!project) return null;
+    const { where, args } = this.#usageFilter({ provider: target.provider, since, until });
+    const scoped = where ? `${where} AND project_name = ?` : 'WHERE project_name = ?';
+    const nameArg = target.name === '(미분류)' ? '' : target.name;
+    const models = this.db.prepare(`
+      SELECT COALESCE(NULLIF(model,''), '(모델 미기록)') AS model, ${this.#tokenSums()}
+      FROM usage_events ${scoped}
+      GROUP BY model ORDER BY total_tokens DESC
+    `).all(...args, nameArg);
+    const total = models.reduce((sum, row) => sum + (Number(row.total_tokens) || 0), 0);
+    return {
+      project,
+      models: models.map((row) => ({
+        model: row.model,
+        tokens: this.#tokensFrom(row),
+        share: total > 0 ? (Number(row.total_tokens) || 0) / total : 0,
+      })),
+      sessions: this.getProjectSessions({ projectKey, since, until }),
+    };
+  }
+
+  getProjectSessions({ projectKey, since = null, until = null, limit = 20 } = {}) {
+    const target = this.#resolveProjectKey(projectKey);
+    if (!target) return [];
+    const { where, args } = this.#usageFilter({ provider: target.provider, since, until });
+    const scoped = where ? `${where} AND project_name = ?` : 'WHERE project_name = ?';
+    const nameArg = target.name === '(미분류)' ? '' : target.name;
+    return this.db.prepare(`
+      SELECT session_id, MAX(model) AS model,
+             MAX(COALESCE(event_timestamp, observed_at)) AS last_activity,
+             ${this.#tokenSums()}
+      FROM usage_events ${scoped}
+      GROUP BY session_id
+      ORDER BY last_activity DESC
+      LIMIT ?
+    `).all(...args, nameArg, limit).map((row) => ({
+      sessionId: row.session_id,
+      model: row.model,
+      lastActivity: row.last_activity,
+      tokens: this.#tokensFrom(row),
+      totalTokens: Number(row.total_tokens) || 0,
+    }));
+  }
+
+  // 한도 이력은 percent 시계열입니다. 토큰과 같은 축에 두지 않습니다(R5).
+  getQuotaHistory({ provider = 'codex', limitId = null, windowMinutes = null, since = null, limit = 500 } = {}) {
+    const clauses = ['provider = ?'];
+    const args = [provider];
+    if (limitId) { clauses.push('limit_id = ?'); args.push(limitId); }
+    if (windowMinutes) { clauses.push('window_minutes = ?'); args.push(Number(windowMinutes)); }
+    if (since) { clauses.push('observed_at >= ?'); args.push(since); }
+    const rows = this.db.prepare(`
+      SELECT limit_id, limit_name, window_type, window_minutes, used_percent, resets_at, observed_at
+      FROM server_usage_snapshots
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY observed_at ASC
+      LIMIT ?
+    `).all(...args, limit);
+    return {
+      points: rows.map((row) => ({
+        limitId: row.limit_id,
+        limitName: row.limit_name,
+        windowType: row.window_type,
+        windowMinutes: Number(row.window_minutes) || null,
+        usedPercent: Number(row.used_percent) || 0,
+        resetsAt: row.resets_at == null ? null : Number(row.resets_at),
+        observedAt: row.observed_at,
+      })),
+    };
   }
 
   getDiagnostics() {

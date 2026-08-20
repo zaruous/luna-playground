@@ -28,6 +28,22 @@ function json(res, statusCode, body) {
   res.end(payload);
 }
 
+// 프로젝트 라우트: 키는 16자리 해시만 허용합니다 (원본 경로 URL 유입 차단).
+const PROJECT_ROUTE = new RegExp(`^${API_PREFIX}/projects/([a-f0-9]{16})(/alias)?$`);
+
+// 별칭 본문만 받으므로 상한을 작게 둡니다.
+async function readJsonBody(req, limitBytes = 8192) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limitBytes) throw new Error('body_too_large');
+    chunks.push(chunk);
+  }
+  if (!chunks.length) return null;
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(String(left ?? ''));
   const rightBuffer = Buffer.from(String(right ?? ''));
@@ -171,13 +187,15 @@ export class UsageApiServer {
         json(res, 401, { error: 'unauthorized' });
         return;
       }
-      await this.#handleApi(req, res, url.pathname);
+      await this.#handleApi(req, res, url);
       return;
     }
     await this.#serveStatic(req, res, url.pathname);
   }
 
-  async #handleApi(req, res, pathname) {
+  async #handleApi(req, res, url) {
+    const pathname = url.pathname;
+    const query = url.searchParams;
     if (req.method === 'GET' && pathname === `${API_PREFIX}/snapshot`) {
       json(res, 200, this.usageEngine.snapshot());
       return;
@@ -203,6 +221,75 @@ export class UsageApiServer {
       else if (req.method === 'POST') json(res, 200, await this.hookInstaller.install());
       else if (req.method === 'DELETE') json(res, 200, await this.hookInstaller.uninstall());
       else json(res, 405, { error: 'method_not_allowed' });
+      return;
+    }
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/timeseries`) {
+      json(res, 200, this.usageEngine.store.getUsageTimeseries({
+        provider: query.get('provider'),
+        model: query.get('model'),
+        bucket: query.get('bucket') ?? 'day',
+        since: query.get('since') ?? this.usageEngine.defaultSince(),
+        until: query.get('until'),
+      }));
+      return;
+    }
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/models`) {
+      json(res, 200, this.usageEngine.store.getModelBreakdown({
+        provider: query.get('provider'),
+        since: query.get('since') ?? this.usageEngine.defaultSince(),
+        until: query.get('until'),
+      }));
+      return;
+    }
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/projects`) {
+      json(res, 200, {
+        projects: this.usageEngine.store.getProjectBreakdown({
+          provider: query.get('provider'),
+          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          until: query.get('until'),
+          limit: Number(query.get('limit')) || 100,
+        }),
+      });
+      return;
+    }
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/quota/history`) {
+      json(res, 200, this.usageEngine.store.getQuotaHistory({
+        provider: query.get('provider') ?? 'codex',
+        limitId: query.get('limitId'),
+        windowMinutes: query.get('windowMinutes'),
+        since: query.get('since'),
+      }));
+      return;
+    }
+    const projectMatch = pathname.match(PROJECT_ROUTE);
+    if (projectMatch) {
+      const [, projectKey, aliasPath] = projectMatch;
+      if (!aliasPath && req.method === 'GET') {
+        const detail = this.usageEngine.store.getProjectDetail({
+          projectKey,
+          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          until: query.get('until'),
+        });
+        if (!detail) json(res, 404, { error: 'project_not_found' });
+        else json(res, 200, detail);
+        return;
+      }
+      if (aliasPath && req.method === 'PUT') {
+        const body = await readJsonBody(req).catch(() => null);
+        if (!body || typeof body !== 'object') {
+          json(res, 400, { error: 'invalid_body' });
+          return;
+        }
+        this.usageEngine.store.setProjectAlias({
+          provider: typeof body.provider === 'string' ? body.provider : 'codex',
+          projectKey,
+          alias: typeof body.alias === 'string' ? body.alias.slice(0, 80) : '',
+          redacted: Boolean(body.redacted),
+        });
+        json(res, 200, this.usageEngine.snapshot());
+        return;
+      }
+      json(res, 405, { error: 'method_not_allowed' });
       return;
     }
     json(res, 404, { error: 'not_found' });

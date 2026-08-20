@@ -6,7 +6,10 @@
 .chip-button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 13px;font-size:10px;font-weight:700;cursor:pointer;color:var(--muted)}.chip-button.primary{background:color-mix(in srgb,var(--accent) 13%,var(--card));color:var(--accent2);border-color:var(--accent)}.chip-button.danger{color:var(--warm)}.chip-button:disabled{opacity:.45;cursor:not-allowed}
 .filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:13px 16px;margin-bottom:16px}.filter-label{font-size:9px;color:var(--muted);font-weight:700}.filter-note{font-size:9px;color:var(--muted);margin:6px 0 0}.filter-bar .filter-note{margin:0 0 0 auto}
 .stack-list{display:grid;gap:14px;margin-top:18px}.stack-row{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:center}.stack-name{display:grid;gap:2px}.stack-name strong{font-size:12px}.stack-name small{font-size:8px;color:var(--muted)}.stack-bar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--soft)}.stack-bar i{display:block;height:100%}
-.tk-input{background:var(--accent)}.tk-cached{background:var(--good)}.tk-cachew{background:var(--blue)}.tk-output{background:var(--warm)}.tk-reason{background:var(--violet)}
+/* 토큰 종류 팔레트 — dataviz 6검사 통과(가장 가까운 인접쌍 정상시야 ΔE 17.2, deutan 9.8).
+   스킨과 무관하게 고정합니다: 색은 데이터 정체성을 따르지 스킨을 따르지 않습니다. */
+:root{--tk-input:#94661f;--tk-cached:#2f9c70;--tk-cachew:#3059a8;--tk-output:#cc6b3a;--tk-reason:#8a4fb0}
+.tk-input{background:var(--tk-input)}.tk-cached{background:var(--tk-cached)}.tk-cachew{background:var(--tk-cachew)}.tk-output{background:var(--tk-output)}.tk-reason{background:var(--tk-reason)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:9px;color:var(--muted);padding-top:12px;border-top:1px dashed var(--line)}.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}.legend-off{opacity:.45}
 .table-row{display:grid;gap:10px;align-items:center;padding:11px 5px;border-top:1px dashed var(--line);font-size:11px}.table-row span{color:var(--muted)}.table-row strong{color:var(--ink)}.table-head{border:0;font-size:9px}.table-head span{color:var(--muted)}.table-total{border-top:1px solid var(--line)}
 .planned-panel{position:relative;overflow:hidden}.planned-copy{font-size:10px;color:var(--muted);margin:12px 0 0;line-height:1.6}.planned-copy code,.filter-note code{font-family:ui-monospace,Consolas,monospace;font-size:9px;background:var(--soft);padding:1px 5px;border-radius:5px}
@@ -24,3 +27,21 @@
 .settings-label{font-size:9px;color:var(--muted);margin:14px 0 8px}.settings-skin-grid{margin-top:0}.settings-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}
 @media(max-width:1100px){.card-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.project-layout{grid-template-columns:1fr}.stat-mini-grid,.diag-grid{grid-template-columns:1fr 1fr}.alert-planned{padding-right:22px}.planned-cat{display:none}}
 @media(max-width:700px){.view-head{display:block}.view-head-actions{margin-top:10px}.card-grid{grid-template-columns:1fr}.stack-row{grid-template-columns:1fr}.table-row{grid-template-columns:repeat(4,1fr)!important}.table-row span:nth-child(n+5){display:none}.recon-row{grid-template-columns:1fr;gap:5px}}
+
+/* M2 차트 · 프로젝트 상세 */
+.chart-wrap{position:relative;margin-top:16px}.chart-svg{width:100%;height:auto;display:block;overflow:visible}
+.chart-grid{stroke:var(--line);stroke-width:1}.chart-axis-label{fill:var(--muted);font-size:9px}
+.chart-seg{transition:opacity .12s}.chart-hit{fill:transparent}.chart-wrap g:hover .chart-seg{opacity:.82}
+.chart-legend{margin-top:12px}
+.chart-tooltip{position:absolute;top:0;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 10px 28px #00000014;display:grid;gap:3px;font-size:9px;pointer-events:none;z-index:5;min-width:132px}
+.chart-tooltip strong{font-size:10px;margin-bottom:3px}.chart-tooltip span{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;color:var(--muted)}.chart-tooltip b{color:var(--ink);font-variant-numeric:tabular-nums}
+.chart-tooltip i,.legend-dot{width:8px;height:8px;border-radius:2px;display:inline-block}.chart-tooltip-total{padding-top:4px;margin-top:2px;border-top:1px dashed var(--line);grid-template-columns:1fr auto!important}
+.legend-dot{margin-right:5px;vertical-align:-1px}
+.model-row{display:grid;gap:5px}.model-copy{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:baseline;font-size:10px}.model-copy span{color:var(--ink)}.model-copy strong{font-variant-numeric:tabular-nums}.model-copy small{color:var(--muted);min-width:38px;text-align:right}
+.period-grid{grid-template-columns:repeat(3,1fr);gap:14px}.period-grid .stat-mini strong{font-size:14px}
+.alias-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+.quota-history{display:grid;gap:14px;padding-top:12px;margin-top:4px;border-top:1px dashed var(--line)}.quota-history-row{display:grid;gap:4px}.quota-history-head{display:flex;justify-content:space-between;align-items:baseline;font-size:9px;color:var(--muted)}.quota-history-head strong{font-size:10px;color:var(--ink);font-variant-numeric:tabular-nums}.quota-history-row small{font-size:8px;color:var(--muted)}
+.sparkline{width:100%;height:60px;display:block}.spark-line{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.spark-good{stroke:var(--good)}.spark-warm{stroke:var(--warm)}
+/* SVG 마크는 fill 로 칠합니다 (HTML 범례 칩은 background 사용) */
+rect.tk-input{fill:var(--tk-input)}rect.tk-cached{fill:var(--tk-cached)}rect.tk-cachew{fill:var(--tk-cachew)}rect.tk-output{fill:var(--tk-output)}rect.tk-reason{fill:var(--tk-reason)}
+@media(max-width:700px){.alias-row{grid-template-columns:1fr}.period-grid{grid-template-columns:1fr 1fr}}

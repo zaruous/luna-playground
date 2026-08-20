@@ -98,8 +98,8 @@ function App() {
   const viewProps = { snapshot, hookStatus, api, actionBusy, currentTheme, onToggleHooks: toggleHooks, onRescan: rescan };
   const views = {
     dashboard: <DashboardView {...viewProps} />,
-    usage: <UsageView snapshot={snapshot} />,
-    project: <ProjectView snapshot={snapshot} />,
+    usage: <UsageView snapshot={snapshot} api={api} />,
+    project: <ProjectView snapshot={snapshot} api={api} />,
     budget: <BudgetView {...viewProps} />,
     alert: <AlertView />,
     settings: <SettingsView snapshot={snapshot} catTheme={catTheme} onSelectTheme={setCatTheme} />,

@@ -86,6 +86,12 @@ export class UsageEngine extends EventEmitter {
     return snapshot;
   }
 
+  // 기간 기본값은 스냅샷과 같은 로컬 월 경계를 씁니다. REST 응답과
+  // 대시보드 총합이 서로 다른 기준으로 끊기면 안 됩니다.
+  defaultSince() {
+    return startOfLocalMonthIso();
+  }
+
   snapshot() {
     const since = startOfLocalMonthIso();
     const providers = this.providerRegistry.describe().map((definition) => {

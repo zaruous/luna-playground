@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { ViewHead, MilestonePill } from './Bits.jsx';
+import QuotaHistory from './QuotaHistory.jsx';
 import { providerMilestones, formatTokens, formatPercent, relativeTime, quotaLabel, resetLabel } from '../shared.js';
 
 const reconcileMeta = {
@@ -26,6 +28,17 @@ function providerState(provider) {
 }
 
 export default function BudgetView({ snapshot, hookStatus, api, actionBusy, onToggleHooks, onRescan }) {
+  const [history, setHistory] = useState(null);
+  const stamp = snapshot?.generatedAt ?? null;
+
+  useEffect(() => {
+    if (!api?.usage?.getQuotaHistory) return undefined;
+    let active = true;
+    api.usage.getQuotaHistory({ provider: 'codex' })
+      .then((payload) => { if (active) setHistory(payload.points ?? []); })
+      .catch(() => { if (active) setHistory([]); });
+    return () => { active = false; };
+  }, [api, stamp]);
   const providers = snapshot?.providers ?? [];
   const codex = providers.find((provider) => provider.id === 'codex') ?? null;
   const quotaWindows = codex?.quotaWindows ?? [];
@@ -79,7 +92,7 @@ export default function BudgetView({ snapshot, hookStatus, api, actionBusy, onTo
                     <div className="quota-track"><i style={{ width: `${window.usedPercent ?? 0}%` }}/></div>
                   </div>
                 ))}
-                <p className="filter-note">한도 이력 추이 차트는 <code>GET /api/v1/quota/history</code>와 함께 M4에서 제공됩니다.</p>
+                <QuotaHistory points={history ?? []} />
               </div>
             ) : (
               <div className="empty-projects"><strong>서버 한도 snapshot이 아직 없어요.</strong><span>Codex가 rate_limits를 기록하면 자동으로 나타납니다.</span></div>

@@ -13,6 +13,10 @@ async function responseJson(response) {
   return payload;
 }
 
+function clean(params) {
+  return Object.fromEntries(Object.entries(params).filter(([, value]) => value != null && value !== ''));
+}
+
 export function createUsageClient(config, {
   fetchImpl = globalThis.fetch?.bind(globalThis),
   EventSourceImpl = globalThis.EventSource,
@@ -60,7 +64,16 @@ export function createUsageClient(config, {
       getSnapshot: () => request('/snapshot'),
       rescan: () => request('/rescan', { method: 'POST' }),
       getDiagnostics: () => request('/diagnostics'),
+      // 시계열은 스냅샷에 싣지 않고 필터가 바뀔 때만 당깁니다.
+      getTimeseries: (params = {}) => request(`/usage/timeseries?${new URLSearchParams(clean(params))}`),
+      getModels: (params = {}) => request(`/usage/models?${new URLSearchParams(clean(params))}`),
+      getQuotaHistory: (params = {}) => request(`/quota/history?${new URLSearchParams(clean(params))}`),
       subscribe,
+    },
+    projects: {
+      list: (params = {}) => request(`/projects?${new URLSearchParams(clean(params))}`),
+      detail: (projectKey, params = {}) => request(`/projects/${projectKey}?${new URLSearchParams(clean(params))}`),
+      setAlias: (projectKey, body) => request(`/projects/${projectKey}/alias`, { method: 'PUT', body: JSON.stringify(body) }),
     },
     codex: {
       getHookStatus: () => request('/providers/codex/hooks'),

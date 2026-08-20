@@ -1,29 +1,109 @@
-import { useMemo, useState } from 'react';
-import { ViewHead, MilestonePill } from './Bits.jsx';
-import { providerCatalog, formatTokens, formatPercent, tokenCategories } from '../shared.js';
+import { useEffect, useMemo, useState } from 'react';
+import { ViewHead } from './Bits.jsx';
+import StackedBars from './Chart.jsx';
+import { decomposeTokens, formatTokens, formatPercent, tokenCategories } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
 
-function categoryValue(totals, key) {
-  return Number(totals?.[key]) || 0;
+const PERIODS = [
+  { id: 'month', label: '이번 달' },
+  { id: '7d', label: '최근 7일' },
+  { id: '30d', label: '최근 30일' },
+];
+
+const BUCKETS = [
+  { id: 'hour', label: '시간' },
+  { id: 'day', label: '일' },
+  { id: 'week', label: '주' },
+  { id: 'month', label: '월' },
+];
+
+// 기간 경계는 로컬 시간대로 만듭니다. 스토어의 버킷도 'localtime'으로 끊으므로
+// 두 기준이 어긋나면 합계가 맞지 않습니다.
+function sinceFor(period) {
+  const now = new Date();
+  if (period === 'month') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const days = period === '7d' ? 7 : 30;
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+  return start.toISOString();
 }
 
-export default function UsageView({ snapshot }) {
-  const providers = snapshot?.providers ?? [];
-  const totals = snapshot?.totals ?? null;
-  const [providerFilter, setProviderFilter] = useState('all');
+function bucketLabel(bucket) {
+  return (value) => {
+    if (bucket === 'hour') return value.slice(11) || value;
+    if (bucket === 'day') return value.slice(5);
+    return value;
+  };
+}
 
-  const measured = useMemo(
-    () => providers.filter((provider) => (provider.totals?.eventCount ?? 0) > 0),
-    [providers],
-  );
-  const visible = providerFilter === 'all' ? measured : measured.filter((provider) => provider.id === providerFilter);
+function categoryValue(tokens, key) {
+  return Number(tokens?.[key]) || 0;
+}
+
+export default function UsageView({ snapshot, api }) {
+  const providers = snapshot?.providers ?? [];
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [period, setPeriod] = useState('month');
+  const [bucket, setBucket] = useState('day');
+  const [timeseries, setTimeseries] = useState(null);
+  const [models, setModels] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+
+  const stamp = snapshot?.generatedAt ?? null;
+
+  useEffect(() => {
+    if (!api?.usage?.getTimeseries) return undefined;
+    let active = true;
+    const params = { since: sinceFor(period), bucket, provider: providerFilter === 'all' ? null : providerFilter };
+    Promise.all([api.usage.getTimeseries(params), api.usage.getModels(params)])
+      .then(([series, breakdown]) => {
+        if (!active) return;
+        setTimeseries(series);
+        setModels(breakdown);
+        setLoadError(null);
+      })
+      .catch((error) => { if (active) setLoadError(error.message || '불러오지 못했습니다'); });
+    return () => { active = false; };
+    // 스냅샷이 갱신되면 현재 필터를 유지한 채 다시 당깁니다 (SSE 구독은 App이 유지).
+  }, [api, period, bucket, providerFilter, stamp]);
+
+  // 시계열은 (버킷 × provider)로 오므로 화면에서는 버킷 단위로 합칩니다.
+  const buckets = useMemo(() => {
+    const merged = new Map();
+    for (const point of timeseries?.series ?? []) {
+      const existing = merged.get(point.bucketStart) ?? { bucketStart: point.bucketStart, tokens: {} };
+      for (const category of [...tokenCategories, { key: 'totalTokens' }]) {
+        existing.tokens[category.key] = (existing.tokens[category.key] ?? 0) + categoryValue(point.tokens, category.key);
+      }
+      merged.set(point.bucketStart, existing);
+    }
+    return [...merged.values()].sort((left, right) => left.bucketStart.localeCompare(right.bucketStart));
+  }, [timeseries]);
+
+  const periodTotals = useMemo(() => {
+    const totals = { totalTokens: 0 };
+    for (const category of tokenCategories) totals[category.key] = 0;
+    for (const item of buckets) {
+      for (const key of Object.keys(totals)) totals[key] += categoryValue(item.tokens, key);
+    }
+    return totals;
+  }, [buckets]);
+
+  const rows = providerFilter === 'all' ? providers : providers.filter((provider) => provider.id === providerFilter);
 
   return (
     <>
-      <ViewHead title="AI 사용량" subtitle="provider · 토큰 종류 드릴다운 — 이번 달 로컬 관측 기준" />
+      <ViewHead title="AI 사용량" subtitle="기간 · provider · 토큰 종류 드릴다운" />
 
       <div className="filter-bar panel" role="group" aria-label="필터">
+        <span className="filter-label">기간</span>
+        {PERIODS.map((item) => (
+          <button type="button" key={item.id} className={`chip-button ${period === item.id ? 'primary' : ''}`} onClick={() => setPeriod(item.id)}>{item.label}</button>
+        ))}
+        <span className="filter-label">버킷</span>
+        {BUCKETS.map((item) => (
+          <button type="button" key={item.id} className={`chip-button ${bucket === item.id ? 'primary' : ''}`} onClick={() => setBucket(item.id)}>{item.label}</button>
+        ))}
         <span className="filter-label">provider</span>
         <button type="button" className={`chip-button ${providerFilter === 'all' ? 'primary' : ''}`} onClick={() => setProviderFilter('all')}>전체</button>
         {providers.map((provider) => (
@@ -35,48 +115,55 @@ export default function UsageView({ snapshot }) {
             onClick={() => setProviderFilter(provider.id)}
           >{provider.name}</button>
         ))}
-        <span className="filter-note">기간: 이번 달 (스냅샷 기준) · 기간·버킷 필터는 M2</span>
       </div>
 
       <div className="view-stack">
         <section className="panel">
-          <div className="panel-head"><div><h2>토큰 종류별 구성 <span>••</span></h2><p className="panel-sub">입력 · 캐시 읽기 · 캐시 쓰기 · 출력 · 추론 — provider마다 제공 범주가 다릅니다</p></div><span className="quality local">이번 달 로컬 관측</span></div>
-          {visible.length ? (
-            <div className="stack-list">
-              {visible.map((provider) => {
-                const providerTotal = Math.max(1, provider.totals?.totalTokens ?? 0);
-                return (
-                  <div className="stack-row" key={provider.id}>
-                    <div className="stack-name"><strong>{provider.name}</strong><small>{formatTokens(provider.totals?.totalTokens)} 토큰 · {provider.totals?.eventCount ?? 0} 이벤트</small></div>
-                    <div className="stack-bar" role="img" aria-label={`${provider.name} 토큰 종류별 구성`}>
-                      {tokenCategories.map((category) => {
-                        const value = categoryValue(provider.totals, category.key);
-                        if (!value) return null;
-                        return <i key={category.key} className={category.tone} style={{ width: `${(value / providerTotal) * 100}%` }} title={`${category.label} ${formatTokens(value)}`} />;
-                      })}
-                    </div>
+          <div className="panel-head">
+            <div><h2>토큰 종류별 추이 <span>••</span></h2><p className="panel-sub">버킷 경계는 로컬 시간대 기준 · 캐시 읽기는 입력에 합산하지 않습니다</p></div>
+            <span className="quality local">로컬 관측</span>
+          </div>
+          {loadError ? <div className="empty-projects"><strong>시계열을 불러오지 못했어요.</strong><span>{loadError}</span></div> : <StackedBars buckets={buckets} bucketLabel={bucketLabel(bucket)} />}
+        </section>
+
+        <section className="two-col">
+          <article className="panel">
+            <div className="panel-head"><div><h2>모델별 비중 <span>••</span></h2><p className="panel-sub">선택한 기간 내 합계</p></div></div>
+            {models?.models?.length ? (
+              <div className="gauge-list">
+                {models.models.map((item) => (
+                  <div className="model-row" key={`${item.provider}-${item.model}`}>
+                    <div className="model-copy"><span>{item.model}</span><strong>{formatTokens(item.tokens.totalTokens)}</strong><small>{formatPercent(item.share * 100, 1)}</small></div>
+                    <div className="quota-track"><i style={{ width: `${item.share * 100}%` }} /></div>
                   </div>
-                );
-              })}
-              <div className="legend">
-                {tokenCategories.map((category) => {
-                  const present = visible.some((provider) => categoryValue(provider.totals, category.key) > 0);
-                  return <span key={category.key} className={present ? '' : 'legend-off'}><i className={category.tone} />{category.label}{present ? '' : ' (미제공)'}</span>;
-                })}
+                ))}
               </div>
+            ) : (
+              <div className="empty-projects"><strong>이 기간에 모델 기록이 없어요.</strong><span>수집된 사용량이 쌓이면 모델별로 나눠 보여줍니다.</span></div>
+            )}
+          </article>
+
+          <article className="panel">
+            <div className="panel-head"><div><h2>기간 합계 <span>••</span></h2><p className="panel-sub">차트에 그려진 버킷의 합</p></div></div>
+            <div className="stat-mini-grid period-grid">
+              {decomposeTokens(periodTotals).segments.map((segment) => (
+                <div className="stat-mini" key={segment.key}>
+                  <span><i className={`legend-dot ${segment.tone}`} />{segment.label}</span>
+                  <strong>{segment.value ? formatTokens(segment.value) : '—'}</strong>
+                </div>
+              ))}
+              <div className="stat-mini"><span>합계</span><strong>{formatTokens(periodTotals.totalTokens)}</strong></div>
             </div>
-          ) : (
-            <div className="empty-projects"><strong>이번 달 관측된 사용량이 아직 없어요.</strong><span>동기화 화면에서 수집 상태를 확인해 보세요.</span></div>
-          )}
+          </article>
         </section>
 
         <section className="panel">
-          <div className="panel-head"><div><h2>provider별 상세 <span>••</span></h2><p className="panel-sub">빈 칸은 0이 아니라 미제공입니다</p></div></div>
+          <div className="panel-head"><div><h2>provider별 상세 <span>••</span></h2><p className="panel-sub">빈 칸은 0이 아니라 미제공입니다 · 이번 달 스냅샷 기준</p></div></div>
           <div className="project-table" role="table">
             <div className="table-row table-head" role="row" style={{ gridTemplateColumns: detailColumns }}>
               <span>provider</span><span>입력</span><span>캐시 읽기</span><span>캐시 쓰기</span><span>출력</span><span>추론</span><span>합계</span><span>품질</span>
             </div>
-            {providers.map((provider) => {
+            {rows.map((provider) => {
               const connected = provider.integration === 'connected';
               const hasData = (provider.totals?.eventCount ?? 0) > 0;
               return (
@@ -95,20 +182,7 @@ export default function UsageView({ snapshot }) {
                 </div>
               );
             })}
-            {totals ? (
-              <div className="table-row table-total" role="row" style={{ gridTemplateColumns: detailColumns }}>
-                <strong>합계</strong>
-                {tokenCategories.map((category) => <span key={category.key}>{formatTokens(categoryValue(totals, category.key))}</span>)}
-                <strong>{formatTokens(totals.totalTokens)}</strong>
-                <span className="quality local">로컬 관측</span>
-              </div>
-            ) : null}
           </div>
-        </section>
-
-        <section className="panel planned-panel">
-          <div className="panel-head"><div><h2>추이 차트 · 모델별 비중</h2><p className="panel-sub">버킷별(시간/일/주/월) 누적 막대와 모델 비중은 시계열 API와 함께 제공됩니다</p></div><MilestonePill id="M2" /></div>
-          <p className="planned-copy">시계열은 SSE 스냅샷에 싣지 않고 필터가 바뀔 때만 REST(<code>GET /api/v1/usage/timeseries</code>)로 당기는 설계입니다. 화면 설계: docs/dev/menus/usage.md</p>
         </section>
       </div>
     </>

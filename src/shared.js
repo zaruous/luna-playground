@@ -76,3 +76,44 @@ export const tokenCategories = [
   { key: 'outputTokens', label: '출력', tone: 'tk-output' },
   { key: 'reasoningTokens', label: '추론', tone: 'tk-reason' },
 ];
+
+// 누적 막대는 겹치지 않는 조각으로만 쌓아야 합니다. Codex(OpenAI) 회계에서
+// cached·cacheWrite 는 input 안에, reasoning 은 output 안에 포함되므로 5개
+// 범주를 그대로 쌓으면 합이 실제의 두 배 가까이 부풀어 규칙 R4를 어깁니다.
+//
+// 그래서 total === input + output 항등식이 성립할 때만 분해하고, 성립하지
+// 않으면(다른 provider가 다른 회계를 쓰는 경우) 분해를 포기하고 원래 범주를
+// 그대로 표시합니다. cacheWrite 가 input 에 포함되는지는 실제 Codex 로그로
+// 아직 검증하지 못했고, 항등식 검사가 그 가정이 깨지는 순간을 잡아냅니다.
+export function decomposeTokens(tokens = {}) {
+  const value = (key) => Number(tokens[key]) || 0;
+  const input = value('inputTokens');
+  const cached = value('cachedInputTokens');
+  const cacheWrite = value('cacheWriteInputTokens');
+  const output = value('outputTokens');
+  const reasoning = value('reasoningTokens');
+  const total = value('totalTokens');
+  const uncachedInput = input - cached - cacheWrite;
+
+  if (total > 0 && input + output === total && uncachedInput >= 0 && output >= reasoning) {
+    return {
+      nested: true,
+      sum: total,
+      segments: [
+        { key: 'cachedInputTokens', label: '캐시 읽기', tone: 'tk-cached', value: cached },
+        { key: 'cacheWriteInputTokens', label: '캐시 쓰기', tone: 'tk-cachew', value: cacheWrite },
+        { key: 'inputTokens', label: '비캐시 입력', tone: 'tk-input', value: uncachedInput },
+        { key: 'outputTokens', label: '출력', tone: 'tk-output', value: output - reasoning },
+        { key: 'reasoningTokens', label: '추론', tone: 'tk-reason', value: reasoning },
+      ],
+    };
+  }
+
+  const segments = tokenCategories.map((category) => ({
+    key: category.key,
+    label: category.label,
+    tone: category.tone,
+    value: value(category.key),
+  }));
+  return { nested: false, sum: segments.reduce((acc, segment) => acc + segment.value, 0), segments };
+}
