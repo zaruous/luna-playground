@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCodexParserState, parseCodexRolloutLine } from '../electron/usage/providers/codex/parser.mjs';
+import { createCodexParserState, parseCodexRolloutLine } from '../service/providers/codex/parser.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/codex-rollout.jsonl'), 'utf8').trim().split('\n');
@@ -44,4 +44,56 @@ test('Duplicate cumulative token_count emits no duplicate usage event', () => {
   const second = parseCodexRolloutLine(line, state).filter((event) => event.type === 'usage');
   assert.equal(first.length, 1);
   assert.equal(second.length, 0);
+});
+
+test('Rate-limit-only refresh does not replay stale last_token_usage', () => {
+  const state = createCodexParserState({ filePath: '/tmp/session.jsonl' });
+  const usage = { input_tokens:100, cached_input_tokens:40, output_tokens:20, total_tokens:120 };
+  const first = {
+    timestamp:'2026-08-20T10:00:00.000Z', type:'event_msg',
+    payload:{ type:'token_count', info:{ total_token_usage:usage, last_token_usage:usage }, rate_limits:{ primary:{ used_percent:10, window_minutes:300 } } },
+  };
+  const refreshed = {
+    ...first,
+    timestamp:'2026-08-20T10:00:01.000Z',
+    payload:{ ...first.payload, rate_limits:{ primary:{ used_percent:11, window_minutes:300 } } },
+  };
+  const events = [first, refreshed].flatMap((item) => parseCodexRolloutLine(JSON.stringify(item), state));
+  assert.equal(events.filter((event) => event.type === 'usage').length, 1);
+  assert.equal(events.filter((event) => event.type === 'rate_limits').length, 2);
+});
+
+test('Small cumulative regression is treated as a stale snapshot', () => {
+  const state = createCodexParserState({ filePath: '/tmp/session.jsonl' });
+  const tokenLine = (timestamp, total, last) => JSON.stringify({
+    timestamp, type:'event_msg', payload:{ type:'token_count', info:{
+      total_token_usage:{ input_tokens:total - 20, output_tokens:20, total_tokens:total },
+      last_token_usage:{ input_tokens:last, output_tokens:0, total_tokens:last },
+    } },
+  });
+  const events = [
+    tokenLine('2026-08-20T10:00:00.000Z', 1000, 1000),
+    tokenLine('2026-08-20T10:00:01.000Z', 990, 10),
+    tokenLine('2026-08-20T10:00:02.000Z', 1010, 10),
+  ].flatMap((line) => parseCodexRolloutLine(line, state)).filter((event) => event.type === 'usage');
+  assert.equal(events.length, 2);
+  assert.equal(events[1].delta.totalTokens, 10);
+  assert.equal(events[1].cumulativeReset, false);
+});
+
+test('Large cumulative reset counts only the reported last increment', () => {
+  const state = createCodexParserState({ filePath: '/tmp/session.jsonl' });
+  const first = JSON.stringify({ timestamp:'2026-08-20T10:00:00.000Z', type:'event_msg', payload:{ type:'token_count', info:{
+    total_token_usage:{ input_tokens:900, output_tokens:100, total_tokens:1000 },
+    last_token_usage:{ input_tokens:900, output_tokens:100, total_tokens:1000 },
+  } } });
+  const reset = JSON.stringify({ timestamp:'2026-08-20T10:01:00.000Z', type:'event_msg', payload:{ type:'token_count', info:{
+    total_token_usage:{ input_tokens:80, output_tokens:20, total_tokens:100 },
+    last_token_usage:{ input_tokens:15, output_tokens:5, total_tokens:20 },
+  } } });
+  parseCodexRolloutLine(first, state);
+  const event = parseCodexRolloutLine(reset, state).find((item) => item.type === 'usage');
+  assert.equal(event.delta.totalTokens, 20);
+  assert.equal(event.cumulativeReset, true);
+  assert.equal(event.incrementSource, 'last_token_usage');
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeCodexHooks, removeNyangCodexHooks } from '../electron/usage/providers/codex/hooks.mjs';
+import { mergeCodexHooks, removeNyangCodexHooks } from '../service/providers/codex/hooks.mjs';
 
 const command = "'/Applications/NyangTracker' --nyangtracker-hook";
 

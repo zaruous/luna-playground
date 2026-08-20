@@ -1,6 +1,6 @@
 # NyangTracker
 
-NyangTracker is a cat-themed Electron desktop app for observing local AI coding usage.
+NyangTracker is a cat-themed local web app for observing local AI coding usage. A Node service collects usage on the machine and a React client reads it over an authenticated loopback HTTP/SSE API.
 
 ## Current scope: Codex Adapter v1
 
@@ -12,7 +12,7 @@ NyangTracker is a cat-themed Electron desktop app for observing local AI coding 
 - Reconciles local activity and server quota movement without inventing a conversion between them.
 - Watches active rollout files incrementally and periodically reconciles missed file events.
 - Optionally installs non-blocking Codex lifecycle hooks as wake-up signals.
-- Streams aggregated usage snapshots to the React renderer through Electron IPC.
+- Streams aggregated usage snapshots to the React client over authenticated loopback HTTP/SSE.
 
 ## Local commands
 
@@ -22,7 +22,7 @@ npm test
 npm run dev
 ```
 
-`npm run dev` starts Vite and Electron together. The collector runs in the Electron main process; the renderer never reads `~/.codex` directly.
+`npm run dev` starts the usage service on a loopback port plus a Vite dev server at `http://127.0.0.1:5173`, injecting the service URL and per-process token into the page. `npm run start:web` builds the client and serves it with the API from one process at `http://127.0.0.1:47831`. The collector always runs in the service process; the browser client never reads `~/.codex` directly.
 
 ## Documentation
 

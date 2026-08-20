@@ -1,6 +1,6 @@
 # NyangTracker 🐈‍⬛
 
-A local-first AI usage tracker with cat skins, built with Electron + React + Vite.
+A local-first AI usage tracker with cat skins, built with React + Vite on a local Node service.
 
 The current implementation focuses on **Codex Adapter v1**. It reads Codex rollout logs, stores token deltas in SQLite, observes server rate-limit snapshots when available, and updates the dashboard in near real time.
 
@@ -23,7 +23,7 @@ Local token totals are not force-adjusted to match server quota movement. Unmatc
 - 5-hour and weekly rate-limit snapshots
 - Local/server reconciliation states
 - Optional lifecycle hook integration
-- Electron IPC live updates
+- Authenticated local HTTP API with SSE live updates
 - Black, white, gray, orange and calico cat themes
 
 ## Development
@@ -36,10 +36,19 @@ npm test
 npm run dev
 ```
 
-Build the renderer with:
+`npm run dev` starts the usage service on a loopback port and a Vite dev server at `http://127.0.0.1:5173` with the service connection injected into the page.
+
+Build the client with:
 
 ```bash
 npm run build
+```
+
+Serve the built client and API from one process:
+
+```bash
+npm run start:web
+# http://127.0.0.1:47831
 ```
 
 More implementation details are in [`docs/codex-usage.md`](docs/codex-usage.md).

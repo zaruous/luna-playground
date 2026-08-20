@@ -1,18 +1,40 @@
-import { spawn } from 'node:child_process';
+import { createServer } from 'vite';
+import { startUsageService } from './usage-service.mjs';
 
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const electronCmd = process.platform === 'win32' ? 'node_modules\\.bin\\electron.cmd' : 'node_modules/.bin/electron';
-const vite = spawn(npmCmd, ['run', 'dev:web'], { stdio: 'inherit', shell: false });
-let electron;
+function clientConfigPlugin(config) {
+  const serialized = JSON.stringify(config).replaceAll('<', '\\u003c');
+  return {
+    name: 'nyang-dev-client-config',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: () => [{
+        tag: 'script',
+        injectTo: 'head',
+        children: `window.__NYANG_TRACKER_CONFIG__=${serialized};`,
+      }],
+    },
+  };
+}
 
-const timer = setInterval(async () => {
-  try {
-    const response = await fetch('http://127.0.0.1:5173');
-    if (!response.ok) return;
-    clearInterval(timer);
-    electron = spawn(electronCmd, ['.'], { stdio: 'inherit', env: { ...process.env, VITE_DEV_SERVER_URL: 'http://127.0.0.1:5173' }, shell: false });
-    electron.on('exit', () => vite.kill('SIGTERM'));
-  } catch {}
-}, 250);
+let service = null;
+let vite = null;
 
-process.on('SIGINT', () => { clearInterval(timer); electron?.kill('SIGTERM'); vite.kill('SIGTERM'); });
+async function stop() {
+  await vite?.close().catch(() => {});
+  await service?.stop().catch(() => {});
+}
+
+process.on('SIGINT', () => stop().finally(() => process.exit(0)));
+process.on('SIGTERM', () => stop().finally(() => process.exit(0)));
+
+try {
+  service = await startUsageService();
+  vite = await createServer({ plugins: [clientConfigPlugin(service.apiServer.clientConfig())] });
+  await vite.listen();
+  vite.printUrls();
+  console.log(`냥토큰 트래커 사용량 API: ${service.baseUrl}`);
+} catch (error) {
+  await stop();
+  console.error('냥토큰 트래커 개발 모드 시작 실패:', error);
+  process.exitCode = 1;
+}

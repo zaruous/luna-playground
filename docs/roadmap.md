@@ -23,7 +23,7 @@ Status: implemented in the current branch.
 - Watch active Codex data and periodically reconcile missed changes.
 - Store `rate_limits` windows as server snapshots.
 - Classify reconciliation as matched, server-only, local-only, reset or unknown.
-- Push normalized snapshots to the Electron renderer.
+- Push normalized snapshots to the React client over HTTP/SSE.
 - Optionally merge lifecycle command hooks into Codex configuration.
 - Keep hooks non-authoritative and non-blocking for Codex work.
 

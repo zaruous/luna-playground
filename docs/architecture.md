@@ -1,14 +1,14 @@
 # NyangTracker architecture
 
-NyangTracker is a local-first Electron application that normalizes AI coding-agent usage into a provider-neutral ledger.
+NyangTracker is a local-first usage service with a React client. Development mode and standalone mode start the same HTTP/SSE service; only the way the client is served differs.
 
 ## Design goals
 
 1. Keep raw local observations and server observations separate.
 2. Never invent token counts to force local data to match a server quota percentage.
 3. Make provider-specific collectors replaceable behind a common adapter contract.
-4. Keep filesystem, SQLite, hooks, and credentials in the Electron main process.
-5. Let the React renderer consume only normalized snapshots through the preload IPC bridge.
+4. Keep filesystem, SQLite, hooks, and provider credentials in the service process.
+5. Let clients consume only normalized snapshots and narrow commands through authenticated HTTP/SSE.
 6. Recover from missed realtime events by replaying durable provider logs.
 
 ## Runtime layers
@@ -40,15 +40,37 @@ Local Usage Ledger   Server Snapshots
           Aggregation
                |
                v
-        Electron IPC
+       HTTP API + SSE
                |
                v
         React dashboard
+        - Vite dev server (development)
+        - service-served build (standalone)
 ```
+
+## Client transport contract
+
+REST handles request/response operations and SSE carries server-to-client updates:
+
+- `GET /api/v1/snapshot` — current normalized snapshot.
+- `GET /api/v1/events` — `snapshot` SSE events, including an immediate full snapshot and heartbeat comments.
+- `POST /api/v1/rescan` — request provider reconciliation.
+- `GET /api/v1/diagnostics` — non-secret service diagnostics.
+- `GET|POST|DELETE /api/v1/providers/codex/hooks` — inspect, install, or remove NyangTracker hooks.
+- `GET /healthz` — minimal unauthenticated liveness check.
+
+Every `/api/v1` request requires the process-generated access token. REST sends it in `X-Nyang-Access-Token`; browser `EventSource` sends it as the `access_token` query parameter. SSE events contain complete snapshots, so reconnecting clients do not need to replay every missed delta.
 
 ## Provider adapter contract
 
-Each provider should ultimately expose the same logical capabilities even if some implementations are partial.
+Each connected provider extends `UsageProviderAdapter` and is owned by `UsageProviderRegistry`. The executable lifecycle contract is:
+
+- `start()` — detect, import history, and start incremental observation.
+- `stop()` — release watchers, timers, and provider resources.
+- `reconcile(reason)` — repair missed local/server observations.
+- `getStatus()` — expose non-sensitive collector health.
+
+Adapters emit `updated`, `hook`, and `error-state`. Provider-specific scanner implementations may additionally expose the following internal capabilities:
 
 - `detect()` — determine whether the provider is installed/configured.
 - `scanHistorical()` — discover and import durable historical usage.
@@ -88,7 +110,7 @@ Quota, usage, or billing data returned by the provider. A percentage quota snaps
 
 The engine correlates local and server movement while preserving unexplained differences. Server-only changes remain unattributed instead of modifying historical local token counts.
 
-## Realtime model
+## Collection and delivery realtime model
 
 Realtime responsiveness is intentionally redundant:
 
@@ -96,7 +118,8 @@ Realtime responsiveness is intentionally redundant:
 2. filesystem watch is the fast path;
 3. lifecycle hook is an optional wake-up signal;
 4. periodic reconcile repairs missed notifications;
-5. app focus/restart performs another reconciliation pass.
+5. app focus/restart performs another reconciliation pass;
+6. the engine publishes a normalized snapshot to all connected SSE clients.
 
 This design means the tracker may be closed during an AI session and still catch up when reopened.
 
@@ -105,26 +128,26 @@ This design means the tracker may be closed during an AI session and still catch
 The renderer does not receive arbitrary filesystem access.
 
 ```text
-React renderer
+React/browser client
   X fs
   X child_process
   X direct ~/.codex access
 
-preload
-  narrow IPC surface
+HTTP/SSE client
+  authenticated snapshot and command contract
 
-Electron main
+usage service process
   filesystem watcher
   provider parsers
   SQLite
   hook management
 ```
 
-Provider auth material should never be copied into renderer state or analytics.
+The service binds to `127.0.0.1` by default, checks browser origins, and requires a random capability token. The client receives only the local service URL and the per-process token, injected into the served HTML: standalone mode injects it while serving `dist/index.html`, development mode injects the same configuration through a Vite `transformIndexHtml` hook. The client gets no filesystem access. Provider auth material should never be copied into client state or analytics.
 
 ## Persistence
 
-Codex v1 stores data in SQLite under Electron `userData`.
+Codex v1 stores data in SQLite under the application user-data directory. The service resolves the platform data directory (`%APPDATA%`, `~/Library/Application Support`, or `$XDG_DATA_HOME`) unless `NYANG_USER_DATA` overrides it.
 
 Current tables:
 
@@ -132,7 +155,9 @@ Current tables:
 - `usage_events`
 - `server_usage_snapshots`
 - `reconciliation_events`
-- `scan_state`
+- `provider_scan_state`
+
+Usage events carry a stable `event_key` when possible. Server snapshots carry a `snapshot_key`; current display lanes are grouped by `(provider, limit_id, window_type)`, while reconciliation history also includes `window_minutes`. The legacy `scan_state` table is retained only as a migration source for existing Codex installations.
 
 The schema is deliberately provider-neutral enough for later adapters.
 

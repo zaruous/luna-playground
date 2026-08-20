@@ -19,7 +19,7 @@ Claude Code Adapter v1 should:
 - use Claude lifecycle hooks only as realtime wake-up signals, never as the usage source of truth;
 - recover missed activity after NyangTracker restarts or was closed;
 - preserve field-level measurement quality when an older Claude Code log cannot support an exact value;
-- expose Claude through the existing Electron IPC and dashboard aggregation path without Claude-specific renderer logic.
+- expose Claude through the existing HTTP/SSE snapshot and dashboard aggregation path without Claude-specific client logic.
 
 ## 2. Non-goals
 
@@ -198,7 +198,7 @@ The provider-level card must not say `server verified` unless a future official 
 Suggested provider layout:
 
 ```text
-electron/usage/providers/claude/
+service/providers/claude/
   detector.mjs
   parser.mjs
   collector.mjs
@@ -338,7 +338,7 @@ Expected changes are limited to capabilities that Claude genuinely requires, suc
 
 Do not add Claude-named columns to shared tables.
 
-## 16. Electron and renderer flow
+## 16. Service and client flow
 
 Target flow:
 
@@ -358,13 +358,13 @@ SQLite Usage Store
 Aggregator
       |
       v
-Electron IPC
+HTTP API + SSE
       |
       v
 React dashboard
 ```
 
-The renderer should receive normalized provider snapshots and render Claude using the same components used for Codex.
+The client should receive normalized provider snapshots and render Claude using the same components used for Codex.
 
 Provider-specific details should be presented as metadata/badges, not branching business logic inside dashboard components.
 
@@ -498,7 +498,7 @@ Claude Adapter v1 is complete when all of the following are true:
 - simulated append/restart;
 - hook/no-hook parity;
 - Codex regression suite;
-- Electron build/CI.
+- client build/CI.
 
 ## 21. Server-side reconciliation follow-up
 

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { EventEmitter } from 'node:events';
 import { createCodexParserState, parseCodexRolloutLine } from './parser.mjs';
 import { resolveCodexHome } from '../../utils.mjs';
+import { UsageProviderAdapter } from '../contracts.mjs';
 
 const READ_CHUNK_SIZE = 256 * 1024;
 
@@ -62,9 +62,14 @@ async function readCompleteLines(filePath, startOffset, onLine) {
   }
 }
 
-export class CodexCollector extends EventEmitter {
+export class CodexCollector extends UsageProviderAdapter {
   constructor({ store, codexHome = resolveCodexHome(), reconcileIntervalMs = 5000 } = {}) {
-    super();
+    super({
+      id: 'codex',
+      name: 'Codex',
+      measurement: 'local_observed',
+      capabilities: { localLedger: true, serverQuota: true, hooks: true },
+    });
     this.store = store;
     this.codexHome = codexHome;
     this.sessionsRoot = path.join(codexHome, 'sessions');
@@ -109,7 +114,7 @@ export class CodexCollector extends EventEmitter {
   }
 
   async #scanFileInternal(filePath, reason) {
-    let scanState = this.store.getScanState(filePath);
+    let scanState = this.store.getScanState(this.id, filePath);
     let startOffset = scanState?.byteOffset ?? 0;
     let previousUsage = scanState?.previousUsage ?? null;
 
@@ -121,7 +126,7 @@ export class CodexCollector extends EventEmitter {
     }
 
     if (startOffset > currentStat.size) {
-      this.store.resetScanState(filePath);
+      this.store.resetScanState(this.id, filePath);
       scanState = null;
       startOffset = 0;
       previousUsage = null;
@@ -164,6 +169,7 @@ export class CodexCollector extends EventEmitter {
     if (result.truncated) return this.#scanFileInternal(filePath, `${reason}:truncated`);
 
     this.store.saveScanState({
+      provider: this.id,
       sourcePath: filePath,
       byteOffset: result.finalOffset,
       fileSize: result.fileSize,
