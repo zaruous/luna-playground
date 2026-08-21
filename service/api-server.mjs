@@ -4,6 +4,8 @@ import http from 'node:http';
 import path from 'node:path';
 
 const API_PREFIX = '/api/v1';
+const HOOK_ROUTE = new RegExp(`^${API_PREFIX}/providers/([a-z0-9_-]+)/hooks$`);
+const SESSION_FLOW_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/flow$`);
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -63,6 +65,7 @@ export class UsageApiServer {
   constructor({
     usageEngine,
     hookInstaller,
+    hookInstallers = null,
     host = '127.0.0.1',
     port = 0,
     accessToken = crypto.randomBytes(32).toString('base64url'),
@@ -73,6 +76,10 @@ export class UsageApiServer {
     if (!usageEngine) throw new TypeError('usageEngine is required');
     this.usageEngine = usageEngine;
     this.hookInstaller = hookInstaller;
+    // provider 마다 hook 설정 파일이 다릅니다. 기존 hookInstaller 인자는
+    // Codex 용으로 그대로 받아 맵에 합침니다.
+    this.hookInstallers = new Map(Object.entries(hookInstallers ?? {}));
+    if (hookInstaller && !this.hookInstallers.has('codex')) this.hookInstallers.set('codex', hookInstaller);
     this.host = host;
     this.port = port;
     this.accessToken = accessToken;
@@ -212,15 +219,43 @@ export class UsageApiServer {
       json(res, 200, this.usageEngine.store.getDiagnostics());
       return;
     }
-    if (pathname === `${API_PREFIX}/providers/codex/hooks`) {
-      if (!this.hookInstaller) {
+    const hookRoute = pathname.match(HOOK_ROUTE);
+    if (hookRoute) {
+      const installer = this.hookInstallers.get(hookRoute[1]);
+      if (!installer) {
         json(res, 503, { error: 'hooks_unavailable' });
         return;
       }
-      if (req.method === 'GET') json(res, 200, await this.hookInstaller.status());
-      else if (req.method === 'POST') json(res, 200, await this.hookInstaller.install());
-      else if (req.method === 'DELETE') json(res, 200, await this.hookInstaller.uninstall());
+      if (req.method === 'GET') json(res, 200, await installer.status());
+      else if (req.method === 'POST') json(res, 200, await installer.install());
+      else if (req.method === 'DELETE') json(res, 200, await installer.uninstall());
       else json(res, 405, { error: 'method_not_allowed' });
+      return;
+    }
+    // 세션 흐름 화면(docs/dev/menus/session.md). sessionId 는 provider 가 만든
+    // UUID 이므로 URL 에 넣어도 경로가 새지 않습니다.
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/sessions`) {
+      json(res, 200, {
+        sessions: this.usageEngine.store.getSessionRanking({
+          provider: query.get('provider'),
+          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          until: query.get('until'),
+          limit: Number(query.get('limit')) || 30,
+        }),
+      });
+      return;
+    }
+    const sessionFlowRoute = pathname.match(SESSION_FLOW_ROUTE);
+    if (req.method === 'GET' && sessionFlowRoute) {
+      const flow = this.usageEngine.store.getSessionFlow({
+        provider: query.get('provider') ?? 'claude',
+        sessionId: decodeURIComponent(sessionFlowRoute[1]),
+      });
+      if (!flow) {
+        json(res, 404, { error: 'session_not_found' });
+        return;
+      }
+      json(res, 200, flow);
       return;
     }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/timeseries`) {

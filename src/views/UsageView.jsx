@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ViewHead } from './Bits.jsx';
+import { ViewHead, useSlowStamp } from './Bits.jsx';
 import StackedBars from './Chart.jsx';
-import { decomposeTokens, formatTokens, formatPercent, tokenCategories } from '../shared.js';
+import { decomposeTokens, formatTokens, formatPercent, tokenCategories, qualityBadge, qualityFieldSummary } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
 
@@ -49,7 +49,8 @@ export default function UsageView({ snapshot, api }) {
   const [models, setModels] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
-  const stamp = snapshot?.generatedAt ?? null;
+  // 같은 이유로 느린 시계를 씁니다(Bits.jsx 의 useSlowStamp 주석 참고).
+  const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
 
   useEffect(() => {
     if (!api?.usage?.getTimeseries) return undefined;
@@ -175,7 +176,11 @@ export default function UsageView({ snapshot, api }) {
                   })}
                   <strong>{hasData ? formatTokens(provider.totals?.totalTokens) : '—'}</strong>
                   {connected && hasData
-                    ? <span className="quality local">로컬 관측</span>
+                    ? (() => {
+                        const badge = qualityBadge(provider.quality);
+                        const detail = qualityFieldSummary(provider.quality).map((field) => field.text).join(' · ');
+                        return <span className={`quality ${badge.tone}`} title={detail}>{badge.label}</span>;
+                      })()
                     : connected
                       ? <span className="quality">관측 대기</span>
                       : <span className="quality">미연결</span>}

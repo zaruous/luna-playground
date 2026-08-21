@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ViewHead } from './Bits.jsx';
+import { ViewHead, useSlowStamp } from './Bits.jsx';
 import { providerCatalog, formatTokens, formatPercent, relativeTime } from '../shared.js';
 
-export default function ProjectView({ snapshot, api }) {
+export default function ProjectView({ snapshot, api, focus, onNavigate }) {
   const [projects, setProjects] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -10,7 +10,14 @@ export default function ProjectView({ snapshot, api }) {
   const [aliasDraft, setAliasDraft] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const stamp = snapshot?.generatedAt ?? null;
+  // 같은 이유로 느린 시계를 씁니다(Bits.jsx 의 useSlowStamp 주석 참고).
+  const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
+
+  // 세션 흐름 화면에서 "프로젝트 →" 로 넘어오면 그 프로젝트가 이미
+  // 선택된 상태로 열립니다.
+  useEffect(() => {
+    if (focus?.projectKey) setSelectedKey(focus.projectKey);
+  }, [focus?.projectKey]);
 
   useEffect(() => {
     if (!api?.projects?.list) return undefined;
@@ -63,7 +70,14 @@ export default function ProjectView({ snapshot, api }) {
 
   return (
     <>
-      <ViewHead title="프로젝트" subtitle="cwd 기준 자동 귀속 · 경로 가림은 서버에서 적용됩니다" />
+      <ViewHead title="프로젝트" subtitle="cwd 기준 자동 귀속 · 경로 가림은 서버에서 적용됩니다">
+        <button
+          type="button"
+          className="chip-button"
+          disabled={!activeKey}
+          onClick={() => onNavigate?.('session', { projectKey: activeKey })}
+        >세션 흐름 보기 →</button>
+      </ViewHead>
 
       {list.length ? (
         <div className="project-layout">

@@ -53,3 +53,17 @@ export function quoteCommandPart(value, platform = process.platform) {
 export function projectKeyOf(provider, projectName) {
   return crypto.createHash('sha1').update(`${provider}|${projectName ?? ''}`).digest('hex').slice(0, 16);
 }
+
+// 토큰 측정 품질 등급 사다리. 이벤트 전역 등급은 필드 중 최저치를
+// 따릅니다(docs/dev/provider-token-api.md §4).
+export const MEASUREMENT_QUALITY_ORDER = Object.freeze(['unverified', 'partial', 'local_exact', 'server_verified']);
+
+export function worstQuality(left, right) {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  const leftRank = MEASUREMENT_QUALITY_ORDER.indexOf(left);
+  const rightRank = MEASUREMENT_QUALITY_ORDER.indexOf(right);
+  if (leftRank < 0) return right;
+  if (rightRank < 0) return left;
+  return leftRank <= rightRank ? left : right;
+}

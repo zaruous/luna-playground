@@ -9,10 +9,11 @@ M1 메뉴 라우팅 골격 ──┬─> M2 사용량/프로젝트 화면 ──
                       │                              ├─> M6 Cursor 어댑터
                       └─> M4 동기화/알림 ────────────┤
 M3 Claude 어댑터 ─────────> M5 Gemini 어댑터 ────────┘
+      └────────> M8 세션 흐름 (턴 계층 · 새 탭)
                                                       └─> M7 비용·내보내기
 ```
 
-M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 병행 가능합니다(수집 계층만 건드림).
+M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 병행 가능했습니다(수집 계층만 건드림). M1~M3는 완료 상태입니다.
 
 ---
 
@@ -59,29 +60,82 @@ M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 �
 
 ---
 
-## M3 — Claude Code 어댑터
+## M3 — Claude Code 어댑터 — 완료
 
-문서: [provider-token-api.md §5.2](./provider-token-api.md)
+문서: [provider-token-api.md §5.2](./provider-token-api.md), [claude-code-adapter.md](../claude-code-adapter.md)
 
-이 마일스톤의 핵심은 파싱이 아니라 **부정확한 원본을 정직하게 다루는 것**입니다. Claude JSONL의 `input_tokens`는 항목 75%가 플레이스홀더이고 `output_tokens`는 thinking을 뺀 값입니다([조사](./token-measurement-survey.md#2-claude-code-jsonl-자체의-신뢰성-문제)).
+이 마일스톤의 핵심은 파싱이 아니라 **부정확한 원본을 정직하게 다루는 것**이었습니다. 다만 실제 로그를 재보니 원본이 조사 시점보다 좋아져 있었고, 그래서 "낮춰 잡는 것"만큼 **근거가 생긴 필드를 정확히 올려 잡는 것**도 이 작업의 일부가 됐습니다([실측 정리](../토큰%20사용량%20측정.md#32-claude-code--구현-완료)).
 
 **산출물**
 
-- `service/providers/claude/{detector,parser,collector}.mjs`
-- `usage_events`: `request_id`, `field_quality`, `parser_version` 컬럼 + `event_key` 부분 UNIQUE 인덱스 + `upsertUsageEvent()`
-- 중복 제거: `message.id` + `requestId`, **last-wins**
-- 품질 등급 표시: 캐시 필드는 `로컬 관측`, input/output은 `미확인`/`추정`
-- `PROVIDER_CATALOG`의 claude를 `connected`로 승격 (어댑터 등록 시 자동)
+- `service/providers/claude/{detector,parser,collector,hooks}.mjs`
+- `usage_events`: `tool_tokens` / `field_quality` / `parser_version` / `request_id` 컬럼 + `event_key` 부분 UNIQUE 인덱스 + `upsertUsageEvent()` + `transaction()`
+- 중복 제거: `claude|message.id|requestId`, **전역 last-wins**(+ 역행 방지 가드)
+- 품질 등급: 필드별 등급 + 등급별 건수를 스냅샷에 실어 UI가 혼합 상태를 그대로 표시
+- provider별 토큰 회계 선언(`tokenAccounting`)과 겹치지 않는 캐시 적중률 분모(`promptTokens`)
+- Hook: `~/.claude/settings.json`에 5개 이벤트, provider별 설치 UI
+- `PROVIDER_CATALOG`의 claude가 어댑터 등록으로 `connected` 승격
+- `service/providers/jsonl-tail.mjs` — Codex와 공유하는 tail 리더
 
-**하지 않는 것**: 보정 계수 곱하기, thinking 토큰 추정, 총합을 그럴듯하게 만들기. 값이 못 미더우면 배지로 알립니다.
+**하지 않은 것**: 보정 계수 곱하기, thinking 토큰 추정, 총합을 그럴듯하게 만들기. 값이 못 미더우면 배지로 알립니다.
 
-**선택 산출물(별도 토글)**: OTLP 수신 경로. `claude_code.token.usage`의 `type`/`model`/`query_source`를 매핑하면 서브에이전트 사용량이 분리되고 품질이 `local_exact`로 올라갑니다. JSONL 레인을 덮어쓰지 않고 병렬 보관합니다.
+**남긴 것(별도 토글)**: OTLP 수신 경로(`capabilities.telemetry = false`). `query_source`로 서브에이전트 사용량을 **분리해서** 보려면 필요합니다 — JSONL만으로도 부모 세션 귀속은 이미 됩니다.
 
-**완료 기준**
+**완료 기준 달성**
 
-- 중간/최종 레코드를 순서대로 주입하면 **최종값만** 남는다 (테스트 필수)
-- 대시보드에 Claude가 별도 provider 행으로 나타나고, 총합에 품질 배지가 붙는다
-- 프롬프트/응답 텍스트가 SQLite와 스냅샷에 없다
+- 중간/최종 레코드를 순서대로 주입하면 최종값만 남습니다 — `test/claude-collector.test.mjs`
+- 대시보드에 Claude가 별도 provider 행으로 나타나고 총합에 품질 배지가 붙습니다
+- 프롬프트/응답 텍스트가 SQLite 파일 바이트와 HTTP 스냅샷 어디에도 없습니다 — `test/claude-privacy.test.mjs`
+- 실제 코퍼스(214 파일 / 요청 13,757건 / 40억 토큰)에서 ccusage와 네 범주·총합이 **정확히 일치**합니다
+
+## M9 — 대시보드 provider 분리 · 최근 정렬 (다음 작업)
+
+문서: [menus/dashboard.md](./menus/dashboard.md) 의 **TODO T1 / T2**
+
+실제 화면을 보고 확정한 두 항목입니다. 새 기능이 아니라 **지금 화면이 사실과 다르게 보이는 것**을 고칩니다.
+
+- **T1** 요약 카드 3장(`캐시 적중` / `서버 주간 한도` / `Codex 서버 동기화`)을 provider별로 분리. 한도를 주지 않는 provider는 0%가 아니라 "미제공"(R7). 캐시 적중률 분모는 회계가 반영된 `promptTokens`
+- **T2** "최근 프로젝트 발자국"을 `last_activity DESC` 로 정렬. 지금은 토큰 순이라 오늘 만진 프로젝트가 목록에 없습니다. 토큰 순 목록은 프로젝트 화면이 이미 담당
+
+둘 다 스냅샷·API 모양 변화가 없어 스토어 정렬과 화면 분기만 손대면 됩니다.
+
+---
+
+## M8 — 세션 흐름 (턴 계층 · 새 탭) — 완료
+
+문서: [menus/session.md](./menus/session.md), [provider-token-api.md §3.5](./provider-token-api.md), [store-extensions.md §10](./store-extensions.md)
+
+기존 화면은 **얼마나 썼나**를 답했습니다. 이 마일스톤은 **어떤 절차로 얼마를 썼나**를 답합니다. 대화 본문은 저장하지 않은 채로요.
+
+계기는 실측이었습니다 — 토큰 1위 세션의 99.4%가 캐시 읽기였고, 즉 "많이 만들어서"가 아니라 "긴 컨텍스트를 1,113번 다시 읽어서" 비쌌습니다. 그 사실이 기존 화면 어디에도 보이지 않았습니다.
+
+**산출물**
+
+- `service/providers/tool-phases.mjs` — 도구 이름 → 작업 단계 매핑(provider별 표, 정규 단계 6개)
+- `service/providers/accounting.mjs` — provider별 토큰 회계 표 한 곳으로 통합
+- `usage_events`: `turn_index` / `tool_counts` / `touched_paths` 컬럼
+- `turns` 테이블 — 경계 사실만(토큰 없음)
+- `provider_scan_state`: `parser_version` / `content_hash`
+- 스토어: `getSessionRanking`, `getSessionFlow`, `upsertTurn`, `resetTurns`, `getLastTurnIndex`, `hasUnattributedTurns`
+- 파서: Claude(`type:'user'` + `compact_boundary`), Codex(`user_message` + `response_item` + `context_compacted`)
+- API: `GET /api/v1/sessions`, `GET /api/v1/sessions/:id/flow`
+- 화면: 새 탭 `session`(세션 흐름) — 순위·컨텍스트 곡선(SVG)·단계별 배분·비싼 턴, 프로젝트 탭과 양방향 이동
+
+**설계 결정 3개**
+
+1. **턴 토큰을 별 테이블에 누적하지 않습니다.** 요청 행에 턴 번호를 달고 집계는 SQL로 뽑습니다 — 증분 tail이 턴 중간을 가르거나 세션을 resume할 때 누적이 두 배가 되는 것을 원장의 중복 제거로 막습니다. `session_activity` 테이블도 만들지 않았습니다(전부 유도 가능).
+2. **단계는 파싱 때 확정하지 않습니다.** 파서는 도구 이름만 기록하고 분류는 조회 시점에 합니다 — 이름은 사실이고 단계는 해석이라, 매핑이 바뀌어도 재파싱이 필요 없습니다.
+3. **재해석 트리거는 버전 + 원장 상태 두 개를 OR** 합니다. 버전 도장만 보면, 결함 있는 중간 버전이 버전만 올려놓고 메타를 못 쓴 경우 영구히 비어 있게 됩니다(이 마일스톤에서 실제로 겪었습니다).
+
+**하지 않는 것**: 대화 요약을 만들어 DB에 넣기, 임의 계수로 "비용" 표시하기, 재독 배수로 좋다/나쁘다 판정하기, 턴 경계를 추측으로 보간하기.
+
+**완료 기준 달성** — 전부 `test/session-flow.test.mjs`
+
+- 턴 토큰 합 == 세션 토큰 합 (경계 미확인 버킷 포함)
+- 재스캔·증분 tail·파서 버전업 어느 경로로도 턴 수와 토큰이 늘지 않음
+- 도구 이름은 DB에 남고 도구 입력·프롬프트·응답은 SQLite 바이트에 없음
+- 서브에이전트 요청이 부모 턴에 억지로 붙지 않고 0번 버킷에 남음
+- `turns`가 비어 있어도 기존 화면 전부 동작
 
 ---
 

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { UsageStore } from '../service/store.mjs';
 import { projectKeyOf } from '../service/utils.mjs';
 
@@ -54,7 +55,7 @@ test('버킷 경계는 UTC가 아니라 로컬 시간대로 끊긴다', () => {
     import fs from 'node:fs';
     import os from 'node:os';
     import path from 'node:path';
-    import { UsageStore } from '${path.resolve('service/store.mjs')}';
+    import { UsageStore } from '${pathToFileURL(path.resolve('service/store.mjs')).href}';
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-tz-'));
     const store = new UsageStore(path.join(root, 'usage.sqlite3'));
     store.insertUsageEvent({
@@ -67,8 +68,13 @@ test('버킷 경계는 UTC가 아니라 로컬 시간대로 끊긴다', () => {
     store.close();
     fs.rmSync(root, { recursive: true, force: true });
   `;
+  // SQLite 의 'localtime' 은 C 런타임을 통해 TZ 를 읽습니다. glibc 는 IANA
+  // 이름을 이해하지만 Windows msvcrt 는 'KST-9' 스타일만 이해하고
+  // 'Asia/Seoul' 은 UTC 로 되돌립니다. 가짜 실패를 만들지 않기 위해
+  // 프로세스가 살고 있는 플랫폼의 방식으로 KST 를 지정합니다.
+  const kst = process.platform === 'win32' ? 'KST-9' : 'Asia/Seoul';
   const seoul = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
-    env: { ...process.env, TZ: 'Asia/Seoul' },
+    env: { ...process.env, TZ: kst },
     encoding: 'utf8',
   }).trim();
   assert.equal(seoul, '2026-08-21', 'KST 기준 버킷이어야 합니다');
@@ -167,9 +173,91 @@ test('누적 막대 분해는 겹치지 않고 합이 총합과 정확히 일치
     + codexLike.outputTokens + codexLike.reasoningTokens;
   assert.ok(naive > codexLike.totalTokens * 1.8, '이 픽스처는 이중 계상을 드러내야 합니다');
 
-  // 항등식이 깨지면 분해를 포기하고 원래 범주를 그대로 씁니다.
-  const additive = { inputTokens: 100, cachedInputTokens: 10, cacheWriteInputTokens: 0, outputTokens: 20, reasoningTokens: 0, totalTokens: 130 };
-  const fallback = decomposeTokens(additive);
+  // Claude 회계는 다릅니다(ccusage 대조로 확인): input 은 비캐시 입력만이고
+  // 캐시 읽기·쓰기가 input 밖에 있으며 total 안에 들어옵니다. 아래 값은 실제
+  // 로컬 코퍼스(214 파일, 요청 13,757건)의 합계입니다.
+  const claudeLike = {
+    inputTokens: 280935,
+    cachedInputTokens: 3933470648,
+    cacheWriteInputTokens: 60164572,
+    outputTokens: 13353519,
+    reasoningTokens: 1680934,
+    totalTokens: 4007269674,
+  };
+  const claudeDecomposed = decomposeTokens(claudeLike);
+  assert.equal(claudeDecomposed.nested, true);
+  assert.equal(
+    claudeDecomposed.segments.reduce((sum, segment) => sum + segment.value, 0),
+    claudeLike.totalTokens,
+    '그려진 조각의 합이 총합과 달라 이중 계상입니다',
+  );
+  assert.ok(claudeDecomposed.segments.every((segment) => segment.value >= 0));
+  // 캐시가 input 밖이므로 비캐시 입력에서 캐시를 빼지 않습니다.
+  assert.equal(
+    claudeDecomposed.segments.find((segment) => segment.key === 'inputTokens').value,
+    claudeLike.inputTokens,
+  );
+  // 캐시 쓰기는 total 안이므로 extras 가 아니라 조각으로 쌓입니다.
+  assert.equal(
+    claudeDecomposed.segments.find((segment) => segment.key === 'cacheWriteInputTokens').value,
+    claudeLike.cacheWriteInputTokens,
+  );
+  assert.equal(claudeDecomposed.extras.length, 0);
+  // 추론은 출력 안에 있으므로 출력 조각에서 빼고 따로 쌓습니다.
+  assert.equal(
+    claudeDecomposed.segments.find((segment) => segment.key === 'outputTokens').value,
+    claudeLike.outputTokens - claudeLike.reasoningTokens,
+  );
+
+  // 아는 항등식이 하나도 안 맞으면 분해를 포기하고 원래 범주를 그대로 씁니다.
+  const unknownShape = { inputTokens: 100, cachedInputTokens: 10, cacheWriteInputTokens: 5, outputTokens: 20, reasoningTokens: 0, totalTokens: 999 };
+  const fallback = decomposeTokens(unknownShape);
   assert.equal(fallback.nested, false);
   assert.equal(fallback.segments.length, 5);
+});
+
+test('회계가 다른 provider 를 섞어도 캐시 적중률 분모가 겹치지 않는다', async () => {
+  const { UsageEngine } = await import('../service/engine.mjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-mixed-'));
+  const engine = new UsageEngine({
+    userDataPath: root,
+    codexHome: path.join(root, 'no-codex'),
+    claudeHomes: [path.join(root, 'no-claude')],
+  });
+  try {
+    // Codex: cached ⊆ input, total = input + output
+    engine.store.insertUsageEvent({
+      type: 'usage', provider: 'codex', eventTimestamp: new Date().toISOString(),
+      session: { provider: 'codex', sessionId: 'cx-1', cwd: '/repo/a', projectName: 'a', model: 'gpt-test' },
+      delta: { inputTokens: 1000, cachedInputTokens: 800, cacheWriteInputTokens: 50, outputTokens: 200, reasoningTokens: 0, totalTokens: 1200 },
+    }, '/codex.jsonl', 0);
+    // Claude: cached ∩ input = ∅, total = input + cached + cacheWrite + output
+    engine.store.upsertUsageEvent({
+      type: 'usage', provider: 'claude', eventTimestamp: new Date().toISOString(),
+      session: { provider: 'claude', sessionId: 'cl-1', cwd: '/repo/b', projectName: 'b', model: 'claude-opus-5' },
+      eventKey: 'claude|msg_mix|req_mix',
+      delta: { inputTokens: 10, cachedInputTokens: 9000, cacheWriteInputTokens: 500, outputTokens: 300, reasoningTokens: 100, toolTokens: 0, totalTokens: 9810 },
+      fieldQuality: { inputTokens: 'local_exact', cachedInputTokens: 'local_exact', outputTokens: 'local_exact', reasoningTokens: 'local_exact' },
+      measurementQuality: 'local_exact',
+    }, '/claude.jsonl', 0);
+
+    const snapshot = engine.snapshot();
+    const codex = snapshot.providers.find((provider) => provider.id === 'codex');
+    const claude = snapshot.providers.find((provider) => provider.id === 'claude');
+
+    assert.equal(codex.tokenAccounting, 'cache_in_input');
+    assert.equal(claude.tokenAccounting, 'cache_disjoint');
+    // 프롬프트 쪽 토큰: Codex 는 input 이 캐시를 포함하므로 input + 캐시쓰기,
+    // Claude 는 캐시가 밖이므로 input + 캐시읽기 + 캐시쓰기.
+    assert.equal(codex.totals.promptTokens, 1000 + 50);
+    assert.equal(claude.totals.promptTokens, 10 + 9000 + 500);
+    assert.equal(snapshot.totals.promptTokens, 1050 + 9510);
+
+    // 옛 정의(cached / input)라면 9800/1010 = 970% 가 나왔습니다.
+    assert.equal(snapshot.totals.cacheRate, 9800 / 10560);
+    assert.ok(snapshot.totals.cacheRate <= 1, '캐시 적중률이 100%를 넘었습니다 — 분모가 겹칩니다');
+  } finally {
+    await engine.stop();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

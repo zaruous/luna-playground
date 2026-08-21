@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { createCodexParserState, parseCodexRolloutLine } from './parser.mjs';
+import { CODEX_PARSER_VERSION, createCodexParserState, parseCodexRolloutLine } from './parser.mjs';
 import { resolveCodexHome } from '../../utils.mjs';
+import { readCompleteLines } from '../jsonl-tail.mjs';
 import { UsageProviderAdapter } from '../contracts.mjs';
-
-const READ_CHUNK_SIZE = 256 * 1024;
+import { accountingOf } from '../accounting.mjs';
 
 async function walkJsonlFiles(root) {
   const files = [];
@@ -26,49 +26,22 @@ async function walkJsonlFiles(root) {
   return files.sort();
 }
 
-async function readCompleteLines(filePath, startOffset, onLine) {
-  const handle = await fsp.open(filePath, 'r');
-  let position = startOffset;
-  let carry = Buffer.alloc(0);
-  try {
-    const stat = await handle.stat();
-    if (startOffset > stat.size) {
-      return { finalOffset: 0, fileSize: stat.size, mtimeMs: stat.mtimeMs, truncated: true };
-    }
-
-    const buffer = Buffer.allocUnsafe(READ_CHUNK_SIZE);
-    while (position < stat.size) {
-      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, stat.size - position), position);
-      if (!bytesRead) break;
-      const chunk = carry.length ? Buffer.concat([carry, buffer.subarray(0, bytesRead)]) : Buffer.from(buffer.subarray(0, bytesRead));
-      const chunkBaseOffset = position - carry.length;
-      let lineStart = 0;
-      while (true) {
-        const newline = chunk.indexOf(0x0a, lineStart);
-        if (newline === -1) break;
-        const raw = chunk.subarray(lineStart, newline);
-        const line = raw.length && raw[raw.length - 1] === 0x0d ? raw.subarray(0, -1).toString('utf8') : raw.toString('utf8');
-        const lineEndOffset = chunkBaseOffset + newline + 1;
-        await onLine(line, lineEndOffset);
-        lineStart = newline + 1;
-      }
-      carry = Buffer.from(chunk.subarray(lineStart));
-      position += bytesRead;
-    }
-    const finalOffset = stat.size - carry.length;
-    return { finalOffset, fileSize: stat.size, mtimeMs: stat.mtimeMs, truncated: false };
-  } finally {
-    await handle.close();
-  }
-}
-
 export class CodexCollector extends UsageProviderAdapter {
   constructor({ store, codexHome = resolveCodexHome(), reconcileIntervalMs = 5000 } = {}) {
     super({
       id: 'codex',
       name: 'Codex',
       measurement: 'local_observed',
-      capabilities: { localLedger: true, serverQuota: true, hooks: true },
+      capabilities: {
+        localLedger: true,
+        serverQuota: true,
+        hooks: true,
+        // 다음 둘은 어떤 토큰 회계를 쓰는지 밝혀 다른 provider 가 엉뚱한
+        // 모델을 재사용하지 않도록 합니다(docs/dev/provider-token-api.md §2).
+        // Codex 는 누적 스냅샷을 diff 하고, 캐시 읽기가 input 어에 있습니다.
+        accounting: 'cumulative_diff',
+        tokenAccounting: accountingOf('codex'),
+      },
     });
     this.store = store;
     this.codexHome = codexHome;
@@ -132,15 +105,38 @@ export class CodexCollector extends UsageProviderAdapter {
       previousUsage = null;
     }
 
+    // 파서 버전업 시 한 번 다시 해석합니다(Claude 어댑터와 같은 규칙).
+    const staleParser = scanState && (scanState.parserVersion ?? 0) < CODEX_PARSER_VERSION;
+    // 버전 도장은 찍혔는데 원장에 턴이 안 붙은 경우도 재해석 대상입니다
+    // (결함이 있던 중간 버전이 버전만 올려놓은 상황).
+    const missingTurns = Boolean(scanState) && this.store.hasUnattributedTurns(this.id, filePath);
+    if (staleParser || missingTurns) {
+      scanState = null;
+      startOffset = 0;
+      previousUsage = null;
+    }
+
     if (startOffset === currentStat.size && scanState?.mtimeMs === currentStat.mtimeMs) {
       return { changed: false, reason: 'unchanged' };
     }
 
     const storedSession = scanState?.sessionId ? this.store.getSession('codex', scanState.sessionId) : null;
-    const parserState = createCodexParserState({ filePath, previousUsage, session: storedSession });
+    const parserState = createCodexParserState({
+      filePath,
+      previousUsage,
+      session: storedSession,
+      // 이어 읽을 때 턴 번호를 물려받습니다(docs/dev/menus/session.md).
+      turn: startOffset > 0 && storedSession?.sessionId
+        ? { index: this.store.getLastTurnIndex('codex', storedSession.sessionId), startedAt: null, compactedPending: false }
+        : null,
+    });
+    if (startOffset === 0 && storedSession?.sessionId) {
+      this.store.resetTurns('codex', storedSession.sessionId);
+    }
     let changed = false;
     let usageEvents = 0;
     let rateSnapshots = 0;
+    let turnEvents = 0;
     let parseErrors = 0;
 
     const result = await readCompleteLines(filePath, startOffset, async (line, sourceOffset) => {
@@ -149,6 +145,10 @@ export class CodexCollector extends UsageProviderAdapter {
       for (const event of events) {
         if (event.type === 'session') {
           this.store.upsertSession(event.session, filePath, observedAt);
+        } else if (event.type === 'turn') {
+          this.store.upsertTurn(event);
+          turnEvents += 1;
+          changed = true;
         } else if (event.type === 'usage') {
           if (this.store.insertUsageEvent(event, filePath, sourceOffset, observedAt)) {
             changed = true;
@@ -176,12 +176,13 @@ export class CodexCollector extends UsageProviderAdapter {
       mtimeMs: result.mtimeMs,
       previousUsage: parserState.previousUsage,
       sessionId: parserState.session.sessionId,
+      parserVersion: CODEX_PARSER_VERSION,
     });
 
     this.status.lastScanAt = new Date().toISOString();
     this.status.lastError = null;
-    if (changed) this.emit('updated', { provider: 'codex', filePath, reason, usageEvents, rateSnapshots });
-    return { changed, usageEvents, rateSnapshots, parseErrors, finalOffset: result.finalOffset };
+    if (changed) this.emit('updated', { provider: 'codex', filePath, reason, usageEvents, rateSnapshots, turnEvents });
+    return { changed, usageEvents, rateSnapshots, turnEvents, parseErrors, finalOffset: result.finalOffset };
   }
 
   async reconcile(reason = 'interval') {

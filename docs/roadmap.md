@@ -41,19 +41,26 @@ A Codex turn should normally appear in NyangTracker shortly after the durable ro
 
 ## Phase 2 — Claude Code Adapter
 
-Primary target: Claude Code project/session JSONL.
+Status: implemented in the current branch.
 
-Planned work:
+### Completed
 
-- detect `~/.claude` project/session roots;
-- map input, cache-read, cache-creation and output usage into the common model;
-- correlate sessions to project paths;
-- deduplicate repeated usage records by stable message/request identity where available;
-- validate Claude CLI versions because locally persisted output usage has had version-specific reliability issues;
-- add Claude lifecycle hooks only as realtime wake-up signals;
-- mark fields `partial` when the local source cannot support an exact value.
+- Discover `${CLAUDE_CONFIG_DIR:-~/.claude}/projects` transcripts, including subagent and workflow-agent transcripts.
+- Map input, cache-read, cache-creation, output and thinking usage into the common model, keeping Claude's cache-disjoint accounting distinct from Codex's cache-in-input accounting.
+- Store request-scoped values directly instead of reusing the Codex cumulative-diff algorithm.
+- Deduplicate globally on `claude|message.id|requestId` with last-wins upsert plus a non-regression guard, so content-block splits and resumed-session copies are counted once.
+- Attribute sessions to projects from `cwd`, and subagent usage to its parent session.
+- Version-gate field quality from measured evidence: `output_tokens_details.thinking_tokens` exists from 2.1.228, and `input_tokens` is trustworthy from 2.1.143.
+- Install `SessionStart / Stop / StopFailure / SessionEnd / SubagentStop` hooks as optional, idempotent, reversible wake-up signals in `~/.claude/settings.json`.
+- Cross-check the whole ledger against ccusage on a frozen 214-file corpus: input, cache-read, cache-creation, output and total agree exactly.
 
-Exit criterion: historical + realtime local usage appears through the same dashboard/SQLite schema without Codex-specific UI branching.
+### Known limits
+
+- Local transcripts cannot prove there was no activity from another device or from the web app.
+- `output_tokens` completeness cannot be verified on logs written before 2.1.228, so those events stay `partial`.
+- A message with multiple `usage.iterations` reports only the last iteration at the top level; the discrepancy is flagged rather than silently corrected.
+- The OTLP telemetry lane (`claude_code.token.usage`) is designed but not implemented, so subagent usage is attributed to its parent rather than shown separately.
+- JSONL is not a public API, so the parser stays defensive and fixture-driven, and every event records its `parser_version`.
 
 ## Phase 3 — Cursor Adapter
 

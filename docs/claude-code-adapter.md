@@ -1,10 +1,23 @@
-# Claude Code Adapter v1 implementation plan
+# Claude Code Adapter v1
 
-Status: next implementation target after Codex Adapter v1.
+Status: **implemented**. Code lives in `service/providers/claude/{detector,parser,collector,hooks}.mjs`; tests in `test/claude-*.test.mjs` and `test/ccusage-claude-crosscheck.test.mjs`.
 
-Last research check: 2026-08-20.
+Last research check: 2026-08-20. Validated against real local logs (Claude Code 2.1.143~2.1.232, 214 transcripts, 30,753 assistant records) on 2026-08-21.
 
-This document turns the Phase 2 roadmap item into an implementation contract. The goal is to add Claude Code without weakening the provider-neutral ledger, trust model, or realtime guarantees established by the Codex adapter.
+This document is the implementation contract for Phase 2. The goal was to add Claude Code without weakening the provider-neutral ledger, trust model, or realtime guarantees established by the Codex adapter.
+
+## 0. What the real logs changed
+
+Four things in the original plan did not survive contact with the installed version. They are corrected in place below; this list exists so a reader knows which assumptions moved.
+
+| Planned assumption | What the logs show |
+| --- | --- |
+| local logs have no thinking-token field | `usage.output_tokens_details.thinking_tokens` exists from 2.1.228 (absent in every earlier version), so `reasoningTokens` is measured, not missing |
+| `output_tokens` is undercounted because thinking is excluded | thinking is *inside* `output_tokens` (thinking ≤ output in 9,176/9,176 records). Only pre-2.1.228 logs stay `partial`, because there the inclusion cannot be proven |
+| `input_tokens` is a placeholder in ~75% of entries | `input ≤ 1` in 8.9% of records, and 98.8% of those are requests whose prompt was almost entirely served from cache. The value never changes across a request's records, so it is not a streaming placeholder |
+| dedupe by message/request identity is enough | the key must also be **global across files** — resuming a session copies the previous transcript, and per-file dedupe inflated output by 8.37% |
+
+Two further findings had no counterpart in the plan: `usage.iterations[]` reports only the last iteration at the top level, and `cache_creation_input_tokens` can disagree with the `cache_creation.ephemeral_*` breakdown. Both are flagged rather than silently corrected.
 
 ## 1. Goals
 
@@ -37,15 +50,25 @@ Claude Adapter v1 will not:
 
 ### 3.1 Primary transcript root
 
-The primary local source is expected under:
+The primary local source is:
 
 ```text
-~/.claude/projects/
+${CLAUDE_CONFIG_DIR:-~/.claude}/projects/
 ```
 
-Sessions are represented as JSONL transcripts below project-specific directories. Current observed records include `assistant` entries with model and usage information.
+`CLAUDE_CONFIG_DIR` may list several roots separated by commas. With it unset, both `~/.claude` and `~/.config/claude` are checked — the same range ccusage reads, which keeps the cross-check meaningful.
 
-The local transcript format is useful but should be treated as a versioned implementation detail rather than a permanently stable public schema. The parser must therefore be defensive and fixture-driven.
+Sessions are JSONL transcripts below project-specific directories. Three layouts carry usage:
+
+```text
+<project>/<conversation-id>.jsonl                       main conversation
+<project>/<conversation-id>/subagents/agent-*.jsonl     subagent
+<project>/<conversation-id>/subagents/workflows/<run>/*.jsonl   workflow agent
+```
+
+Discovery therefore walks every `.jsonl` under `projects/` rather than matching a fixed shape, and skips `tool-results/` outright — it holds tool output bodies, carries no usage, and there is no reason to read it.
+
+The local transcript format is useful but should be treated as a versioned implementation detail rather than a permanently stable public schema. The parser is therefore defensive and fixture-driven, and every event records its `parser_version`.
 
 ### 3.2 Usage record shape
 
@@ -58,12 +81,19 @@ message.usage.input_tokens
 message.usage.output_tokens
 message.usage.cache_creation_input_tokens
 message.usage.cache_read_input_tokens
-requestId / request_id, when present
-sessionId / session_id, when present
-cwd, when present
+message.usage.output_tokens_details.thinking_tokens   from 2.1.228
+message.usage.cache_creation.ephemeral_*_input_tokens
+message.usage.iterations[]                            per-API-call breakdown
+requestId / request_id
+sessionId / session_id
+cwd, version, gitBranch, entrypoint
+isSidechain, agentId                                  subagent records
+isApiErrorMessage, apiErrorStatus                     local error placeholders
 ```
 
-Do not persist message content simply because it is available in the same record.
+In the measured corpus `requestId` was present on 30,741 of 30,753 records and `message.id` on all of them, so the dedupe key is effectively always available.
+
+Do not persist message content simply because it is available in the same record. Records whose model is `<synthetic>` or which carry `isApiErrorMessage` are locally generated error placeholders with zero usage — they are counted in the collector status, not in the ledger.
 
 ### 3.3 Subagents
 
@@ -73,7 +103,9 @@ Recent Claude Code session layouts can contain subagent transcripts beneath a se
 <session>/subagents/agent-*.jsonl
 ```
 
-Subagent support is part of v1, but the implementation must remain tolerant of layout changes.
+Subagent support is part of v1, and the implementation stays tolerant of layout changes.
+
+Correlation turned out to be free: a subagent transcript's `sessionId` **is the parent session id**, and its `cwd` is the parent `cwd`. So subagent usage rolls up to the parent session and project without any extra join, which also matches how ccusage attributes it.
 
 Important accounting rule:
 
@@ -115,6 +147,8 @@ Initial mapping into the common ledger:
 | `cache_read_input_tokens` | `cached_input_tokens` | Cache hits/read tokens. |
 | `cache_creation_input_tokens` | `cache_write_input_tokens` | Cache creation/write tokens. |
 | `output_tokens` | `output_tokens` | Subject to version/sanity validation described below. |
+| `output_tokens_details.thinking_tokens` | `reasoning_tokens` | Present from 2.1.228. A subset of `output_tokens`, so it is never added to the total again. Absent in earlier versions — left out of `field_quality` rather than stored as a measured zero. |
+| `cache_creation.ephemeral_*_input_tokens` | `cache_write_input_tokens` | Summed and compared against the top-level field; the larger value wins and the field is downgraded to `partial` when they disagree. |
 | `message.model` | `model` | Preserve the provider-reported model string. |
 
 For a normalized observed total, v1 should use the sum of token categories actually present in the record rather than inventing a provider quota conversion:
@@ -127,7 +161,9 @@ observed_total =
   + output_tokens
 ```
 
-If future Claude logs expose a distinct authoritative `total_tokens`, preserve both the provider total and the category sum so discrepancies can be detected instead of silently overwritten.
+Note that this differs from Codex, where `input_tokens` already contains the cache-read tokens and cache creation sits outside the total. The adapter therefore declares `capabilities.tokenAccounting = 'cache_disjoint'` so that derived values (cache hit rate, stacked bars) are computed from a non-overlapping prompt-side denominator instead of assuming one accounting model for every provider.
+
+If future Claude logs expose a distinct authoritative `total_tokens`, preserve both the provider total and the category sum so discrepancies can be detected instead of silently overwritten. The same rule already applies to two observed disagreements: a multi-iteration `usage.iterations[]` whose sum exceeds the top-level usage, and a `cache_creation_input_tokens` that disagrees with its TTL breakdown. Both downgrade the affected fields and increment a collector counter; neither rewrites history silently.
 
 Claude-specific cache TTL breakdowns may be stored later as provider metadata. They should not force new top-level common columns until the product needs cross-provider semantics for them.
 
@@ -155,6 +191,8 @@ Do not deduplicate merely because two adjacent usage tuples are numerically iden
 
 A historical Claude Code issue documented local JSONL records where `output_tokens` contained a small stream-start placeholder while the completed stream result had the real output count. That issue was version-specific and has since been closed, but NyangTracker must be able to ingest historical logs created by affected versions.
 
+The stream-start placeholder is still observable in current logs, but as a *separate record of the same request* rather than as a wrong final value: one request is written as several lines, one per content block, and the first line carries a partial output count. Global last-wins dedupe resolves it. Measured on the local corpus: 927 of 9,830 multi-record requests had differing output counts, and in all 927 the last record held the maximum.
+
 Implementation requirements:
 
 - detect the Claude Code version when it can be obtained reliably;
@@ -163,14 +201,12 @@ Implementation requirements:
 - retain the original observed `output_tokens` in the ledger;
 - mark the affected field/session `partial` when exactness cannot be established.
 
-Example:
+Measured compatibility table (the only ranges backed by fixtures):
 
 ```text
-input        exact
-cache read   exact
-cache write  exact
-output       partial
-session      partial
+2.1.228 and newer     input exact   cache read exact   cache write exact   output exact   reasoning exact
+2.1.143 .. 2.1.227    input exact   cache read exact   cache write exact   output partial reasoning not reported
+below 2.1.143 / unknown  input unverified  cache read exact  cache write exact  output partial  reasoning not reported
 ```
 
 Do not estimate output from visible response characters and present it as measured usage.
@@ -432,20 +468,20 @@ Tests should include a fixture containing sentinel prompt/assistant text and ass
 
 ## 19. Acceptance criteria
 
-Claude Adapter v1 is complete when all of the following are true:
+All twelve hold as of 2026-08-21. The test that pins each one is named in parentheses.
 
-1. Existing Claude history can be imported without manual path selection on supported platforms.
-2. Re-running the historical scan produces no duplicate usage.
-3. A new Claude turn normally appears shortly after its transcript is durably written.
-4. Closing NyangTracker during Claude work and reopening it recovers missed usage.
-5. Cache read, cache creation, input and output are displayed separately.
-6. Historical logs with suspect output accounting are labeled partial instead of silently corrected.
-7. Subagent usage is counted once and attributable to a parent/project when evidence permits.
-8. Hook installation is optional, non-blocking, idempotent and reversible.
-9. No conversation content is stored in the usage database.
-10. The dashboard renders Claude from the same normalized provider snapshot contract as Codex.
-11. Existing Codex tests remain green.
-12. New Claude parser/collector/hook/privacy tests are green.
+1. Existing Claude history imports without manual path selection (`claude-collector`: 여러 프로젝트 디렉터리).
+2. Re-running the historical scan produces no duplicate usage (`claude-collector`: 과거 스캔은 멱등).
+3. A new Claude turn appears shortly after its transcript is durably written — watcher/hook wake-up plus a 5s reconcile floor (`claude-collector`: 증분 tail, hook 신호).
+4. Closing NyangTracker mid-session and reopening recovers missed usage (`claude-collector`: 저장된 offset 에서 재시작).
+5. Cache read, cache creation, input and output are displayed separately (`usage-aggregation`: 누적 막대 분해).
+6. Logs whose output accounting cannot be verified are labelled partial instead of silently corrected (`claude-parser`: thinking_tokens 가 없는 옛 버전 로그).
+7. Subagent usage is counted once and attributed to its parent/project (`claude-collector`: 서브에이전트 사용량).
+8. Hook installation is optional, non-blocking, idempotent and reversible (`claude-hooks`).
+9. No conversation content reaches the usage database or any served payload (`claude-privacy`).
+10. The dashboard renders Claude from the same normalized snapshot contract as Codex — no provider-id branching in components (`usage-aggregation`: 회계가 다른 provider 를 섞어도).
+11. Existing Codex tests remain green (`codex-*`).
+12. Claude parser/collector/hook/privacy/real-shape tests are green, and the ccusage cross-check agrees on all shared fields (`ccusage-claude-crosscheck`).
 
 ## 20. Suggested implementation sequence
 
@@ -499,6 +535,28 @@ Claude Adapter v1 is complete when all of the following are true:
 - hook/no-hook parity;
 - Codex regression suite;
 - client build/CI.
+
+## 20.1 Follow-up shipped: turn ledger (M8)
+
+Adapter v1 recorded *how many* tokens each request used. A follow-up milestone added *which step of the work* used them, without weakening §17.
+
+What the Claude adapter contributes:
+
+| Signal | Source | Stored as |
+| --- | --- | --- |
+| Turn boundary | `type:'user'` record with no `toolUseResult` and a text block | `turns.started_at` — the timestamp only, never the prompt |
+| Tool activity | `message.content[].tool_use.name` | `usage_events.tool_counts` JSON — names only, never `input` |
+| Touched files | `tool_use.input.file_path` / `.path` / `.notebook_path` | `usage_events.touched_paths` — last segment + parent only |
+| Compaction | `type:'system'`, `subtype:'compact_boundary'` | `turns.compacted` — the fact, never the summary text |
+
+Reading `tool_use.name` while never reading `tool_use.input` is the whole trick: the name is structure, the input is payload. `test/session-flow.test.mjs` asserts that `Bash` reaches SQLite and `SENTINEL-TOOL-INPUT` does not.
+
+Two Claude-specific consequences:
+
+- **Subagent requests land in turn 0** ("boundary unknown"). A subagent transcript shares the parent `sessionId` but cannot tell which parent turn launched it, and attaching it to whichever turn the scanner happened to be on would be a lie. Correlating through `agentId` is the follow-up.
+- **The parser version had to be bumped** (1 → 2). Files already read to EOF by v1 have their cursor at the end, so nothing would be re-interpreted. `provider_scan_state.parser_version` triggers a one-time re-read — plus a ledger-state check (`turn_index IS NULL`), because a defective intermediate version can stamp the version without writing the metadata.
+
+Design and screen: [dev/menus/session.md](./dev/menus/session.md).
 
 ## 21. Server-side reconciliation follow-up
 

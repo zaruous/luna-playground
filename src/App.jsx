@@ -5,18 +5,20 @@ import { catThemes } from './shared.js';
 import DashboardView from './views/DashboardView.jsx';
 import UsageView from './views/UsageView.jsx';
 import ProjectView from './views/ProjectView.jsx';
+import SessionView from './views/SessionView.jsx';
 import BudgetView from './views/BudgetView.jsx';
 import AlertView from './views/AlertView.jsx';
 import SettingsView from './views/SettingsView.jsx';
 
 const navItems = [
-  ['dashboard', '대시보드'], ['usage', 'AI 사용량'], ['project', '프로젝트'], ['budget', '동기화'], ['alert', '알림'], ['settings', '설정'],
+  ['dashboard', '대시보드'], ['usage', 'AI 사용량'], ['session', '세션 흐름'], ['project', '프로젝트'], ['budget', '동기화'], ['alert', '알림'], ['settings', '설정'],
 ];
 
 function NavIcon({ type }) {
   const paths = {
     dashboard: <><path d="M4 19V9h3v10M10.5 19V5h3v14M17 19v-7h3v7"/><path d="M3 21h18"/></>,
     usage: <><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A8.5 8.5 0 0 1 20.5 9H15z"/></>,
+    session: <><path d="M4 18l4-7 4 4 4-9 4 6"/><path d="M3 21h18"/></>,
     project: <><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></>,
     budget: <><circle cx="12" cy="12" r="8"/><path d="M7 12h10M12 7v10"/></>,
     alert: <><path d="M6 17h12l-1.5-2.3V10a4.5 4.5 0 0 0-9 0v4.7z"/><path d="M10 20h4"/></>,
@@ -25,15 +27,23 @@ function NavIcon({ type }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[type]}</svg>;
 }
 
+// hook 가속 경로를 지원하는 provider. 어댑터가 생길 땐 여기에 더합니다.
+const HOOK_PROVIDERS = ['codex', 'claude'];
+
 function App() {
-  const [activeNav, setActiveNav] = useState('dashboard');
+  // 화면 이동은 view 와 함게 **포커스 인자**를 나릅니다. URL 을 쓰지 않는
+  // 이유는 프로젝트 경로가 붌라우저 하이스토리에 남는 것을 피하기 위해서입니다
+  // (docs/dev/menus/session.md).
+  const [nav, setNav] = useState({ view: 'dashboard', focus: null });
+  const activeNav = nav.view;
   const [skinOpen, setSkinOpen] = useState(false);
   const [catTheme, setCatTheme] = useState(() => {
     const savedTheme = window.localStorage.getItem('nyangtracker-cat-theme');
     return catThemes.some((theme) => theme.id === savedTheme) ? savedTheme : 'black';
   });
   const [snapshot, setSnapshot] = useState(null);
-  const [hookStatus, setHookStatus] = useState(null);
+  // hook 설정 파일은 provider 마다 다릅니다. 상황도 provider 당 하나입니다.
+  const [hookStatuses, setHookStatuses] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [lastUpdatePulse, setLastUpdatePulse] = useState(0);
 
@@ -50,7 +60,11 @@ function App() {
     if (!api?.usage) return undefined;
     let active = true;
     api.usage.getSnapshot().then((value) => { if (active) setSnapshot(value); }).catch(() => {});
-    api.codex?.getHookStatus?.().then((value) => { if (active) setHookStatus(value); }).catch(() => {});
+    for (const providerId of HOOK_PROVIDERS) {
+      api.hooks?.(providerId).getHookStatus()
+        .then((value) => { if (active) setHookStatuses((current) => ({ ...current, [providerId]: value })); })
+        .catch(() => {});
+    }
     const unsubscribe = api.usage.subscribe((value) => {
       if (!active) return;
       setSnapshot(value);
@@ -86,20 +100,35 @@ function App() {
     try { setSnapshot(await api.usage.rescan()); } finally { setActionBusy(false); }
   }
 
-  async function toggleHooks() {
-    if (!api?.codex || actionBusy) return;
+  async function toggleHooks(providerId = 'codex') {
+    const hooks = api?.hooks?.(providerId);
+    if (!hooks || actionBusy) return;
     setActionBusy(true);
     try {
-      const next = hookStatus?.installed ? await api.codex.uninstallHooks() : await api.codex.installHooks();
-      setHookStatus(next);
+      const next = hookStatuses[providerId]?.installed ? await hooks.uninstallHooks() : await hooks.installHooks();
+      setHookStatuses((current) => ({ ...current, [providerId]: next }));
     } finally { setActionBusy(false); }
   }
 
-  const viewProps = { snapshot, hookStatus, api, actionBusy, currentTheme, onToggleHooks: toggleHooks, onRescan: rescan };
+  // 화면 간 이동. 세션 흐름 ↔ 프로젝트를 양방향으로 오가며,
+  // 가려간 화면이 그 대상을 이미 골람 상태로 열립니다.
+  function navigate(view, focus = null) {
+    setNav({ view, focus });
+  }
+
+  const viewProps = {
+    snapshot, hookStatuses, api, actionBusy, currentTheme,
+    // 대시보드의 단일 Hook 버튼은 Codex 를 가리킵니다 — provider 별 설정은
+    // 동기화 화면에서 합니다.
+    hookStatus: hookStatuses.codex ?? null,
+    onToggleHooks: toggleHooks,
+    onRescan: rescan,
+  };
   const views = {
     dashboard: <DashboardView {...viewProps} />,
     usage: <UsageView snapshot={snapshot} api={api} />,
-    project: <ProjectView snapshot={snapshot} api={api} />,
+    session: <SessionView snapshot={snapshot} api={api} focus={nav.focus} onNavigate={navigate} />,
+    project: <ProjectView snapshot={snapshot} api={api} focus={nav.focus} onNavigate={navigate} />,
     budget: <BudgetView {...viewProps} />,
     alert: <AlertView />,
     settings: <SettingsView snapshot={snapshot} catTheme={catTheme} onSelectTheme={setCatTheme} />,
@@ -111,7 +140,7 @@ function App() {
       <aside className="sidebar">
         <div className="brand"><div className="brand-paw" aria-hidden="true"><i/><i/><i/><i/></div><strong>냥토큰<br/>트래커</strong></div>
         <nav className="nav-list" aria-label="주요 메뉴">
-          {navItems.map(([type, label]) => <button key={type} className={activeNav === type ? 'nav-item active' : 'nav-item'} onClick={() => setActiveNav(type)}><NavIcon type={type}/><span>{label}</span></button>)}
+          {navItems.map(([type, label]) => <button key={type} className={activeNav === type ? 'nav-item active' : 'nav-item'} onClick={() => setNav({ view: type, focus: null })}><NavIcon type={type}/><span>{label}</span></button>)}
         </nav>
         <div className="sidebar-art" aria-hidden="true"><CatArt pose="sidebar" decorative /></div>
       </aside>

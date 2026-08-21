@@ -55,12 +55,52 @@ provider 총합의 배지는 **구성 필드 중 최저 등급**입니다. 총�
 | 서버 한도 snapshot 없음 | 게이지 `—`, `snapshot 대기` |
 | SQLite 비어 있음 | 카드 0, 프로젝트 영역에 첫 수집 안내 |
 
+## TODO — 확정된 개선 항목
+
+아래는 실제 화면을 보고 확정한 항목입니다. 설계 의도가 아니라 **지금 화면이 틀리게 보이는 것**을 고치는 작업이라 우선순위가 높습니다.
+
+### T1. 요약 카드 3장을 provider별로 쪼갠다
+
+`캐시 적중` · `서버 주간 한도` · `Codex 서버 동기화` 세 항목이 지금 사실과 다르게 보입니다.
+
+| 항목 | 지금 | 문제 | 되어야 하는 것 |
+|---|---|---|---|
+| 캐시 적중 | provider **합산** 하나 (`totals.cacheRate`) | Codex와 Claude는 캐시 회계가 서로 달라(§`accounting.mjs`) 합산 비율의 의미가 흐려집니다. Codex 5.6만 토큰과 Claude 23억 토큰을 한 비율로 뭉개면 사실상 Claude 값만 보이는 것과 같습니다 | **provider별 캐시 적중률**. 합산값을 보여주려면 분모(`promptTokens`)를 함께 적어 근거를 드러냅니다 |
+| 서버 주간 한도 | Codex `quotaWindows`만 | 카드 제목이 "서버 주간 한도"인데 실제로는 **Codex 전용**입니다. Claude는 로컬 로그에 한도가 없어 값이 없는데, 카드만 보면 전체 한도처럼 읽힙니다 | provider별 한도 게이지. 한도를 주지 않는 provider는 **"한도 미제공"**으로 표기 (0%로 채우지 않음, R7) |
+| Codex 서버 동기화 패널 | 제목·내용 모두 Codex 고정 | provider가 늘어도 이 패널은 Codex만 봅니다. Claude는 `reconciliation`이 항상 비어 있는데 그 사실이 화면에 없습니다 | provider별 카드로 분리. 서버 관측이 없는 provider는 "서버 원장 없음 — 로컬 관측만"으로 명시 |
+
+핵심 규칙은 이미 문서에 있는 것과 같습니다 — **provider마다 측정 근거가 다르면 화면에서도 갈라 보여야 합니다.** 한 숫자로 합치는 순간 "어느 provider의 사실인지" 알 수 없게 됩니다.
+
+구현 메모:
+
+- 캐시 적중률의 분모는 `provider.totals.promptTokens`(회계 반영됨)를 씁니다. `cachedInputTokens / inputTokens`를 다시 쓰면 Claude에서 수천 %가 됩니다
+- 한도는 `provider.capabilities.serverQuota`로 "미제공"을 판단합니다. Claude는 `false`
+- 카드 자리가 부족하면 요약 카드는 합산 + 툴팁에 provider별 내역, 상세는 [동기화 화면](./budget.md)에 provider별 카드로 두는 분담도 가능합니다
+
+### T2. 최근 프로젝트 발자국을 마지막 활동 순으로
+
+"최근 프로젝트 발자국"인데 정렬이 **토큰 순**입니다(`store.getRecentProjectsAcrossProviders`의 `ORDER BY total_tokens DESC`). 그래서 오늘 만진 프로젝트가 목록에 없고, 몇 주 전의 큰 프로젝트가 계속 위에 남습니다.
+
+```sql
+-- 지금
+ORDER BY total_tokens DESC
+-- 되어야 하는 것
+ORDER BY last_activity DESC
+```
+
+- 패널 제목이 "최근"이므로 **마지막 활동이 가장 최신인 것이 항상 맨 위**여야 합니다
+- 토큰 순 목록이 필요하면 [프로젝트 화면](./project.md)이 이미 그 역할입니다 — 두 화면의 정렬 기준을 다르게 두는 것이 의도입니다
+- `getRecentProjects`(provider 단위)도 같은 문제를 갖고 있으니 함께 봅니다
+- 정렬만 바꾸면 되므로 API·스냅샷 모양 변화는 없습니다. `test/usage-aggregation.test.mjs`에 "최신 활동이 먼저 온다" 단정을 추가합니다
+
 ## 완료 기준
 
 - [ ] 뷰 분리 후 렌더 결과·SSE 갱신·focus reconcile 동작이 이전과 동일
 - [ ] 기간 전환 시 카드/차트/프로젝트가 같은 기간을 사용
 - [ ] planned provider가 0이 아니라 `—`로 표시됨
-- [ ] 품질 배지가 provider별로 다르게 표시됨 (Codex `로컬 관측`, Claude `미확인`)
+- [ ] 품질 배지가 provider별로 다르게 표시됨 (Codex `로컬 관측`, Claude `추정`)
+- [ ] (T1) 캐시 적중·서버 한도·서버 동기화가 provider별로 갈라져 보이고, 한도를 주지 않는 provider는 0%가 아니라 "미제공"으로 표시됨
+- [ ] (T2) 최근 프로젝트 발자국의 첫 행이 항상 마지막 활동이 가장 최신인 프로젝트임
 
 ## 하지 않는 것
 

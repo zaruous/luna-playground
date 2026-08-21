@@ -5,6 +5,7 @@ import { UsageApiServer } from '../service/api-server.mjs';
 import { hookSocketPath } from '../service/hook-server.mjs';
 import { UsageEngine } from '../service/engine.mjs';
 import { CodexHookInstaller } from '../service/providers/codex/hooks.mjs';
+import { ClaudeHookInstaller } from '../service/providers/claude/hooks.mjs';
 import { quoteCommandPart } from '../service/utils.mjs';
 
 export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,8 +16,8 @@ export function defaultUserDataPath() {
   return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'nyang-token-tracker');
 }
 
-export function hookCommand() {
-  return `${quoteCommandPart(process.execPath)} ${quoteCommandPart(path.join(rootDir, 'scripts', 'codex-hook.mjs'))} --nyangtracker-hook`;
+export function hookCommand(script = 'codex-hook.mjs') {
+  return `${quoteCommandPart(process.execPath)} ${quoteCommandPart(path.join(rootDir, 'scripts', script))} --nyangtracker-hook`;
 }
 
 export async function startUsageService({ host = '127.0.0.1', port = 0, staticRoot = null } = {}) {
@@ -26,8 +27,11 @@ export async function startUsageService({ host = '127.0.0.1', port = 0, staticRo
 
   const userDataPath = process.env.NYANG_USER_DATA || defaultUserDataPath();
   const usageEngine = new UsageEngine({ userDataPath });
-  const hookInstaller = new CodexHookInstaller({ command: hookCommand() });
-  const apiServer = new UsageApiServer({ usageEngine, hookInstaller, host, port, staticRoot });
+  const hookInstallers = {
+    codex: new CodexHookInstaller({ command: hookCommand('codex-hook.mjs') }),
+    claude: new ClaudeHookInstaller({ command: hookCommand('claude-hook.mjs') }),
+  };
+  const apiServer = new UsageApiServer({ usageEngine, hookInstallers, host, port, staticRoot });
   let stopping = null;
 
   async function stop() {
@@ -41,7 +45,7 @@ export async function startUsageService({ host = '127.0.0.1', port = 0, staticRo
   try {
     await usageEngine.start();
     const baseUrl = await apiServer.start();
-    return { usageEngine, apiServer, baseUrl, stop };
+    return { usageEngine, apiServer, baseUrl, hookInstallers, stop };
   } catch (error) {
     await stop().catch(() => {});
     if (error?.code === 'EADDRINUSE' && error.address === hookSocketPath()) {

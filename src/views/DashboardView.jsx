@@ -3,11 +3,12 @@ import CatArt from '../CatArt.jsx';
 import {
   providerCatalog, formatTokens, formatPercent, relativeTime,
   windowLabel, quotaLabel, resetLabel, reconcileCopy,
+  aggregateQuality, qualityBadge, qualityFieldSummary,
 } from '../shared.js';
 
 export default function DashboardView({ snapshot, hookStatus, api, actionBusy, currentTheme, onToggleHooks }) {
   const codex = snapshot?.providers?.find((item) => item.id === 'codex') ?? null;
-  const totals = snapshot?.totals ?? { totalTokens:0, inputTokens:0, cachedInputTokens:0, cacheWriteInputTokens:0, outputTokens:0, reasoningTokens:0, cacheRate:0 };
+  const totals = snapshot?.totals ?? { totalTokens:0, inputTokens:0, cachedInputTokens:0, cacheWriteInputTokens:0, outputTokens:0, reasoningTokens:0, promptTokens:0, cacheRate:0 };
   const quotaWindows = codex?.quotaWindows?.length
     ? codex.quotaWindows
     : [codex?.rateLimits?.primary, codex?.rateLimits?.secondary].filter(Boolean);
@@ -30,41 +31,66 @@ export default function DashboardView({ snapshot, hookStatus, api, actionBusy, c
       };
       const tokens = measured?.totals?.totalTokens ?? 0;
       const status = measured?.integration === 'connected' ? '연동됨' : provider.status;
-      return { ...provider, ...measured, status, tokens, measurement: measured?.measurement ?? null };
+      return {
+        ...provider, ...measured, status, tokens,
+        measurement: measured?.measurement ?? null,
+        badge: tokens ? qualityBadge(measured?.quality) : null,
+      };
     });
   }, [snapshot]);
   const maxTokens = Math.max(1, ...providerRows.map((item) => item.tokens));
 
-  const collectorDetected = Boolean(codex?.collector?.detected);
-  const collectorWatching = Boolean(codex?.collector?.watching);
+  // 수집 상태 칩은 provider 하나가 아니라 지금 실제로 수집하는 provider 전체를
+  // 가리켜야 합니다. Claude 가 붙은 뒤로 "Codex 발견"만 보여주면 거짓말입니다.
+  const collectingProviders = providerRows.filter((item) => item.collector?.detected);
+  const watchingProviders = providerRows.filter((item) => item.collector?.watching);
+  const collectorDetected = collectingProviders.length > 0;
+  const collectorWatching = watchingProviders.length > 0;
+  const sumFiles = (rows) => rows.reduce((sum, item) => sum + (item.collector?.filesDiscovered ?? 0), 0);
+  const watchedFileCount = sumFiles(watchingProviders);
+  const discoveredFileCount = sumFiles(collectingProviders);
   const serverObserved = quotaWindows.length > 0;
   const hookInstalled = Boolean(hookStatus?.installed);
-  const cachePercent = totals.inputTokens ? totals.cacheRate * 100 : 0;
+  // 분모는 겹치지 않는 프롬프트 쪽 토큰입니다. provider 마다 캐시가 input 안에
+  // 있는지 밖에 있는지 다르므로 엔진이 회계에 맞춰 계산해 내려줍니다.
+  const cachePercent = totals.promptTokens ? totals.cacheRate * 100 : 0;
   const connectedProviders = providerRows.filter((provider) => provider.integration === 'connected' || provider.measurement);
+  const totalsQuality = aggregateQuality(snapshot?.providers ?? []);
+  const measuredProviderNames = providerRows.filter((item) => item.tokens > 0).map((item) => item.name);
+  const fieldSummary = useMemo(() => {
+    const rows = (snapshot?.providers ?? []).filter((provider) => (provider?.totals?.totalTokens ?? 0) > 0);
+    // 필드 근거를 안 남기는 provider(Codex)는 툴팁에서 빈 줄만 만들므로 뺍니다.
+    return rows
+      .map((provider) => ({ provider: provider.name, fields: qualityFieldSummary(provider.quality) }))
+      .filter((row) => row.fields.length > 0);
+  }, [snapshot]);
+  const fieldSummaryTitle = fieldSummary
+    .map((row) => `${row.provider}: ${row.fields.map((field) => field.text).join(' · ')}`)
+    .join('\n');
 
   return (
     <>
-      <section className="collector-strip" aria-label="Codex 수집 상태">
-        <div className={`collector-chip ${collectorDetected ? 'ok' : 'wait'}`}><span>로그</span><strong>{collectorDetected ? 'Codex 발견' : '미발견'}</strong></div>
-        <div className={`collector-chip ${collectorWatching ? 'ok' : 'wait'}`}><span>실시간</span><strong>{collectorWatching ? '파일 감시 중' : 'reconcile 대기'}</strong></div>
+      <section className="collector-strip" aria-label="수집 상태">
+        <div className={`collector-chip ${collectorDetected ? 'ok' : 'wait'}`}><span>로그</span><strong>{collectorDetected ? `${collectingProviders.map((item) => item.name).join(' · ')} 발견` : '미발견'}</strong></div>
+        <div className={`collector-chip ${collectorWatching ? 'ok' : 'wait'}`}><span>실시간</span><strong>{collectorWatching ? `${watchedFileCount.toLocaleString('ko-KR')}개 파일 감시 중` : 'reconcile 대기'}</strong></div>
         <div className={`collector-chip ${serverObserved ? 'server' : 'wait'}`}><span>서버</span><strong>{serverObserved ? '한도 snapshot' : 'snapshot 대기'}</strong></div>
         <div className={`collector-chip ${hookInstalled ? 'ok' : 'wait'}`}><span>Hook</span><strong>{hookInstalled ? '보조 신호 연결' : '선택 설치'}</strong></div>
         <button type="button" className="hook-button" onClick={onToggleHooks} disabled={!api?.codex || actionBusy}>{hookInstalled ? 'Stop Hook 해제' : '실시간 Hook 설치'}</button>
       </section>
 
       <section className="summary-grid" aria-label="사용량 요약">
-        <article className="stat-card"><div className="stat-label">이번 달 총 토큰 <span>••</span></div><strong>{formatTokens(totals.totalTokens)}</strong><p><em className="quality local">● 로컬 관측</em> · Codex rollout</p><i className="brush mint-brush"/></article>
-        <article className="stat-card"><div className="stat-label">캐시 적중 <span>••</span></div><strong className="mint-text">{formatPercent(cachePercent)}</strong><p>{formatTokens(totals.cachedInputTokens)} cached input</p><div className="plant" aria-hidden="true"><b>⌁</b><i/></div></article>
+        <article className="stat-card"><div className="stat-label">이번 달 총 토큰 <span>••</span></div><strong>{formatTokens(totals.totalTokens)}</strong><p title={fieldSummaryTitle}><em className={`quality ${totalsQuality.tone}`}>● {totalsQuality.label}</em> · {measuredProviderNames.join(' · ') || '관측 대기'}</p><i className="brush mint-brush"/></article>
+        <article className="stat-card"><div className="stat-label">캐시 적중 <span>••</span></div><strong className="mint-text">{formatPercent(cachePercent)}</strong><p>{formatTokens(totals.cachedInputTokens)} / {formatTokens(totals.promptTokens)} 프롬프트 토큰</p><div className="plant" aria-hidden="true"><b>⌁</b><i/></div></article>
         <article className="stat-card"><div className="stat-label">서버 {featuredQuota ? windowLabel(featuredQuota) : '한도'} <span>••</span></div><strong className="orange-text">{featuredQuota ? formatPercent(featuredQuota.usedPercent) : '—'}</strong><p><em className="quality server">● 서버 관측</em> {featuredQuota ? `· ${relativeTime(featuredQuota.observedAt)}` : '· 대기 중'}</p><i className="brush peach-brush"/></article>
-        <article className="stat-card"><div className="stat-label">현재 수집 AI <span>••</span></div><strong className="violet-text stat-ai">{connectedProviders.map((provider) => provider.name).join(' · ') || '대기 중'}</strong><p>{codex?.collector?.filesDiscovered ?? 0}개 세션 파일 · {formatTokens(totals.outputTokens)} output</p><span className="crown" aria-hidden="true">♕</span></article>
+        <article className="stat-card"><div className="stat-label">현재 수집 AI <span>••</span></div><strong className="violet-text stat-ai">{connectedProviders.map((provider) => provider.name).join(' · ') || '대기 중'}</strong><p>{discoveredFileCount.toLocaleString('ko-KR')}개 세션 파일 · {formatTokens(totals.outputTokens)} output</p><span className="crown" aria-hidden="true">♕</span></article>
       </section>
 
       <section className="main-grid">
         <article className="panel usage-panel">
-          <div className="panel-head"><div><h2>AI별 사용량 <span>••</span></h2><p className="panel-sub">공통 provider snapshot · Codex → Claude → Cursor → Gemini</p></div><span className="quality local">이번 달 로컬 관측</span></div>
+          <div className="panel-head"><div><h2>AI별 사용량 <span>••</span></h2><p className="panel-sub">공통 provider snapshot · Codex → Claude → Cursor → Gemini</p></div><span className={`quality ${totalsQuality.tone}`}>이번 달 {totalsQuality.label}</span></div>
           <CatArt className="peek-cat" pose="peek" label={`${currentTheme.label} 차트 고양이 드로잉`} />
           <div className="usage-chart">
-            {providerRows.map((item) => <div className={`usage-row ${item.tokens === 0 ? 'usage-row--pending' : ''}`} key={item.id}><div className="ai-name"><span className={`ai-mark ${item.tone}`}>{item.short}</span><span>{item.name}<small>{item.measurement ? '로컬 관측' : item.status}</small></span></div><div className="bar-track"><div className={`bar ${item.tone}`} style={{ width: item.tokens ? `${Math.max(3, (item.tokens / maxTokens) * 100)}%` : '0%' }}/></div><strong>{item.tokens ? formatTokens(item.tokens) : '—'}</strong><span>{item.tokens && totals.totalTokens ? formatPercent((item.tokens / totals.totalTokens) * 100) : '—'}</span></div>)}
+            {providerRows.map((item) => <div className={`usage-row ${item.tokens === 0 ? 'usage-row--pending' : ''}`} key={item.id}><div className="ai-name"><span className={`ai-mark ${item.tone}`}>{item.short}</span><span>{item.name}<small>{item.badge ? item.badge.label : item.measurement ? '관측 대기' : item.status}</small></span></div><div className="bar-track"><div className={`bar ${item.tone}`} style={{ width: item.tokens ? `${Math.max(3, (item.tokens / maxTokens) * 100)}%` : '0%' }}/></div><strong>{item.tokens ? formatTokens(item.tokens) : '—'}</strong><span>{item.tokens && totals.totalTokens ? formatPercent((item.tokens / totals.totalTokens) * 100, 1) : '—'}</span></div>)}
           </div>
           <div className="token-breakdown"><span>Input <strong>{formatTokens(totals.inputTokens)}</strong></span><span>Cached <strong>{formatTokens(totals.cachedInputTokens)}</strong></span><span>Cache write <strong>{formatTokens(totals.cacheWriteInputTokens)}</strong></span><span>Output <strong>{formatTokens(totals.outputTokens)}</strong></span><span>Reasoning <strong>{formatTokens(totals.reasoningTokens)}</strong></span></div>
         </article>

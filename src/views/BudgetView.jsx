@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ViewHead, MilestonePill } from './Bits.jsx';
+import { ViewHead, MilestonePill, useSlowStamp } from './Bits.jsx';
 import QuotaHistory from './QuotaHistory.jsx';
 import { providerMilestones, formatTokens, formatPercent, relativeTime, quotaLabel, resetLabel } from '../shared.js';
 
@@ -8,6 +8,19 @@ const reconcileMeta = {
   SERVER_ONLY_CHANGE: { label: '서버만 증가 — 로컬 근거 없음', tone: 'pill-warm' },
   LOCAL_ONLY_ACTIVITY: { label: '로컬만 증가 — 서버 미반영', tone: 'pill-muted' },
   RESET: { label: '한도 리셋', tone: 'pill-blue' },
+};
+
+// 상황을 아직 못 가져왔을 땐 보여줄 기본값. 생기는 이벤트 목록은
+// 설치하기 전에도 "무엇을 건드리는가"를 보여준다는 의미가 있습니다.
+const hookDefaults = {
+  codex: {
+    path: '~/.codex/hooks.json',
+    events: ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd'],
+  },
+  claude: {
+    path: '~/.claude/settings.json',
+    events: ['SessionStart', 'Stop', 'StopFailure', 'SessionEnd', 'SubagentStop'],
+  },
 };
 
 function providerState(provider) {
@@ -27,9 +40,9 @@ function providerState(provider) {
   return { pill: 'pill-warm', text: '미발견', detail: '로그 디렉터리를 찾지 못함' };
 }
 
-export default function BudgetView({ snapshot, hookStatus, api, actionBusy, onToggleHooks, onRescan }) {
+export default function BudgetView({ snapshot, hookStatuses, api, actionBusy, onToggleHooks, onRescan }) {
   const [history, setHistory] = useState(null);
-  const stamp = snapshot?.generatedAt ?? null;
+  const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
 
   useEffect(() => {
     if (!api?.usage?.getQuotaHistory) return undefined;
@@ -44,7 +57,8 @@ export default function BudgetView({ snapshot, hookStatus, api, actionBusy, onTo
   const quotaWindows = codex?.quotaWindows ?? [];
   const reconciliation = (codex?.reconciliation?.recent ?? []).filter((row) => row.classification !== 'UNKNOWN');
   const diagnostics = snapshot?.diagnostics ?? null;
-  const hookInstalled = Boolean(hookStatus?.installed);
+  // hook 없이도 수집은 동작해야 하므로 상황을 못 가져와도 카드는 띄워줍니다.
+  const hookProviders = providers.filter((provider) => provider.capabilities?.hooks);
 
   return (
     <>
@@ -67,19 +81,30 @@ export default function BudgetView({ snapshot, hookStatus, api, actionBusy, onTo
           })}
         </section>
 
-        <section className="panel">
-          <div className="panel-head">
-            <div><h2>Codex lifecycle Hook <span>••</span></h2><p className="panel-sub">가속 경로일 뿐이며 수집 근거는 항상 rollout 로그입니다 — hook을 꺼도 데이터는 사라지지 않아요</p></div>
-            <button type="button" className="chip-button primary" onClick={onToggleHooks} disabled={!api?.codex || actionBusy}>{hookInstalled ? 'Hook 해제' : 'Hook 설치'}</button>
-          </div>
-          <div className="hook-events">
-            {(hookStatus?.expectedEvents ?? ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd']).map((eventName) => (
-              <span key={eventName} className={`hook-event${hookStatus?.installedEvents?.includes(eventName) ? ' on' : ''}`}>{eventName}</span>
-            ))}
-          </div>
-          <div className="kv"><span>설정 파일</span><strong>{hookStatus?.hooksPath ?? '~/.codex/hooks.json'}</strong></div>
-          <div className="kv"><span>수정 전 백업</span><strong>hooks.json.nyangtracker.bak</strong></div>
-        </section>
+        {hookProviders.map((provider) => {
+          const status = hookStatuses?.[provider.id] ?? null;
+          const installed = Boolean(status?.installed);
+          const settingsPath = status?.settingsPath ?? status?.hooksPath ?? hookDefaults[provider.id]?.path ?? '—';
+          return (
+            <section className="panel" key={`${provider.id}-hooks`}>
+              <div className="panel-head">
+                <div>
+                  <h2>{provider.name} lifecycle Hook <span>••</span></h2>
+                  <p className="panel-sub">가속 경로일 뿐이며 수집 근거는 항상 provider의 durable 로그입니다 — hook을 꺼도 데이터는 사라지지 않아요</p>
+                </div>
+                <button type="button" className="chip-button primary" onClick={() => onToggleHooks(provider.id)} disabled={!api?.hooks || actionBusy}>{installed ? 'Hook 해제' : 'Hook 설치'}</button>
+              </div>
+              <div className="hook-events">
+                {(status?.expectedEvents ?? hookDefaults[provider.id]?.events ?? []).map((eventName) => (
+                  <span key={eventName} className={`hook-event${status?.installedEvents?.includes(eventName) ? ' on' : ''}`}>{eventName}</span>
+                ))}
+              </div>
+              <div className="kv"><span>설정 파일</span><strong>{settingsPath}</strong></div>
+              <div className="kv"><span>수정 전 백업</span><strong>{`${settingsPath.split(/[\\/]/).pop()}.nyangtracker.bak`}</strong></div>
+              {status?.state === 'conflict' ? <div className="kv"><span>상태</span><strong>설정 파일을 읽지 못했습니다 — 덮어쓰지 않았어요</strong></div> : null}
+            </section>
+          );
+        })}
 
         <section className="two-col">
           <article className="panel">
