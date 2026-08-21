@@ -858,6 +858,10 @@ export class UsageStore {
     return { overall, eventCount, byQuality, sources, fields, reportedFields: Object.keys(fields) };
   }
 
+  // "최근" 목록이므로 마지막 활동 순입니다. 토큰 순으로 두면 몇 주 전의 큰
+  // 프로젝트가 LIMIT 자리를 계속 차지해 오늘 만진 프로젝트가 아예 안 보입니다.
+  // 토큰 순위는 프로젝트 화면(getProjectBreakdown)이 맡습니다 — 두 화면의
+  // 정렬 기준이 다른 것이 의도입니다.
   getRecentProjects(provider = 'codex', limit = 6, since = null) {
     const timeClause = since ? 'AND COALESCE(event_timestamp, observed_at) >= ?' : '';
     const args = since ? [provider, since, limit] : [provider, limit];
@@ -873,7 +877,7 @@ export class UsageStore {
       FROM usage_events
       WHERE provider = ? ${timeClause}
       GROUP BY project_name
-      ORDER BY total_tokens DESC
+      ORDER BY last_activity DESC
       LIMIT ?
     `).all(...args);
     return rows.map((row) => ({
@@ -903,7 +907,7 @@ export class UsageStore {
       FROM usage_events
       ${timeClause}
       GROUP BY provider, project_name
-      ORDER BY total_tokens DESC
+      ORDER BY last_activity DESC
       LIMIT ?
     `).all(...args);
     const aliases = this.#aliasIndex();

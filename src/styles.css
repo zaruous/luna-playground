@@ -47,3 +47,14 @@ rect.tk-input{fill:var(--tk-input)}rect.tk-cached{fill:var(--tk-cached)}rect.tk-
 @media(max-width:700px){.alias-row{grid-template-columns:1fr}.period-grid{grid-template-columns:1fr 1fr}}
 .chart-tooltip-extra{grid-template-columns:auto 1fr auto!important;opacity:.75;padding-top:3px}
 .legend-extra{opacity:.75;font-style:italic}
+
+/* T1 요약 카드·서버 동기화 패널의 provider별 근거 */
+.summary-grid .stat-card{height:auto;min-height:145px}
+.stat-card .stat-split{display:flex;flex-wrap:wrap;gap:2px 8px;margin:6px 0 0;font-size:8px;color:var(--muted)}
+.stat-card .stat-split b{color:var(--ink)}
+.ledger-block{display:grid;gap:9px;padding-top:11px;border-top:1px dashed var(--line)}
+.ledger-block:first-child{padding-top:0;border-top:0}
+.ledger-head{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:700}
+.ledger-head .ai-mark{width:20px;height:20px;border-radius:7px;font-size:8px}
+.ledger-head small{margin-left:auto;font-size:8px;font-weight:400;color:var(--muted)}
+.ledger-note{font-size:8px;color:var(--muted);margin:0}

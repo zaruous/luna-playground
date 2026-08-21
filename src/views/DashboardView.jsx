@@ -4,24 +4,20 @@ import {
   providerCatalog, formatTokens, formatPercent, relativeTime,
   windowLabel, quotaLabel, resetLabel, reconcileCopy,
   aggregateQuality, qualityBadge, qualityFieldSummary,
+  cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
 } from '../shared.js';
 
+// snapshot 을 아직 못 받은 서버 원장 provider 에만 쓰는 자리표시자입니다.
+// serverQuota 가 false 인 provider 에 재사용하면 존재하지도 않는 5시간/주간
+// 한도 창 두 개를 지어내게 됩니다.
+const quotaPlaceholderRows = [
+  { windowType:'primary', windowMinutes:300, unavailable:true },
+  { windowType:'secondary', windowMinutes:10080, unavailable:true },
+];
+
 export default function DashboardView({ snapshot, hookStatus, api, actionBusy, currentTheme, onToggleHooks }) {
-  const codex = snapshot?.providers?.find((item) => item.id === 'codex') ?? null;
   const totals = snapshot?.totals ?? { totalTokens:0, inputTokens:0, cachedInputTokens:0, cacheWriteInputTokens:0, outputTokens:0, reasoningTokens:0, promptTokens:0, cacheRate:0 };
-  const quotaWindows = codex?.quotaWindows?.length
-    ? codex.quotaWindows
-    : [codex?.rateLimits?.primary, codex?.rateLimits?.secondary].filter(Boolean);
-  const featuredQuota = quotaWindows.find((window) => window.windowMinutes === 300 && window.limitId === 'codex')
-    ?? quotaWindows.find((window) => window.windowMinutes === 300)
-    ?? quotaWindows[0]
-    ?? null;
-  const quotaRows = quotaWindows.length ? quotaWindows : [
-    { windowType:'primary', windowMinutes:300, unavailable:true },
-    { windowType:'secondary', windowMinutes:10080, unavailable:true },
-  ];
   const projects = snapshot?.projects ?? [];
-  const [commentTitle, commentText] = reconcileCopy(codex?.reconciliation);
 
   const providerRows = useMemo(() => {
     const measuredProviders = snapshot?.providers?.length ? snapshot.providers : providerCatalog;
@@ -49,11 +45,50 @@ export default function DashboardView({ snapshot, hookStatus, api, actionBusy, c
   const sumFiles = (rows) => rows.reduce((sum, item) => sum + (item.collector?.filesDiscovered ?? 0), 0);
   const watchedFileCount = sumFiles(watchingProviders);
   const discoveredFileCount = sumFiles(collectingProviders);
-  const serverObserved = quotaWindows.length > 0;
+  // 서버 원장 이야기는 실제로 연동된 provider 에만 걸립니다. 웹 미리보기에서는
+  // providerRows 가 providerCatalog 로 대체되는데 그 행에는 capabilities 도
+  // quotaWindows 도 없으므로, integration 으로 거르면 유령 블록이 안 생깁니다.
+  const ledgerRows = providerRows.filter((item) => item.integration === 'connected');
+  // 분기는 reconciliation.status 가 아니라 capabilities 기준입니다. status 는
+  // "snapshot 이 아직 없음"과 "서버 원장 자체가 없음"이 똑같이 NO_SERVER_DATA 라
+  // 구분이 안 되고, 그러면 matched/server-only/local-only 세 개의 0 이 "대조했는데
+  // 차이가 없다"로 읽힙니다 — 대조한 적이 없는 provider 에 대한 거짓말입니다.
+  const quotaStates = ledgerRows.map((row) => ({ row, quota: serverQuotaState(row), window: featuredQuotaWindow(row) }));
+  // 서로 다른 구독의 percent 는 공통 분모가 없습니다 — 평균 내지 않고 가장 많이
+  // 쓴 provider 하나만 대표로 세우고 카드 제목에 그 이름을 적습니다(R5).
+  const quotaLeader = quotaStates
+    .filter((entry) => entry.quota.state === 'observed' && entry.window)
+    .sort((left, right) => (right.window.usedPercent ?? 0) - (left.window.usedPercent ?? 0))[0] ?? null;
+  const featuredQuota = quotaLeader?.window ?? null;
+  const quotaSplitTitle = quotaStates
+    .map((entry) => `${entry.row.name}: ${entry.quota.state === 'observed' ? `${windowLabel(entry.window)} ${formatPercent(entry.window.usedPercent)} · ${resetLabel(entry.window)}` : entry.quota.label}`)
+    .join('\n');
+  const serverObserved = quotaStates.some((entry) => entry.quota.state === 'observed');
+  // 냥코멘트는 "서버와 로컬을 대조했다"는 이야기입니다 — 서버 원장이 있는
+  // provider 것만 먹여야 합니다. 아무 provider 나 먼저 잡으면 Claude 데이터 위에
+  // Codex 의 대조 서사를 얹게 됩니다.
+  const [commentTitle, commentText] = reconcileCopy(ledgerRows.find((row) => row.capabilities?.serverQuota)?.reconciliation);
   const hookInstalled = Boolean(hookStatus?.installed);
   // 분모는 겹치지 않는 프롬프트 쪽 토큰입니다. provider 마다 캐시가 input 안에
   // 있는지 밖에 있는지 다르므로 엔진이 회계에 맞춰 계산해 내려줍니다.
-  const cachePercent = totals.promptTokens ? totals.cacheRate * 100 : 0;
+  // 아직 아무것도 안 쟀으면 0% 가 아니라 '—' 입니다(R7).
+  const cachePercent = cacheHitPercent(totals);
+  // 합계 하나로는 누구의 적중률인지 알 수 없습니다. Codex 수만 토큰과 Claude
+  // 수십억 토큰을 합치면 화면에 남는 건 사실상 Claude 값뿐이고, 두 provider 는
+  // 캐시 회계가 반대라 합계 비율에 깨끗한 의미도 없습니다.
+  const cacheBreakdown = providerRows
+    .filter((item) => (item.totals?.promptTokens ?? 0) > 0)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      percent: cacheHitPercent(item.totals),
+      accounting: accountingLabels[item.tokenAccounting] ?? '회계 미확인',
+      cached: item.totals.cachedInputTokens,
+      prompt: item.totals.promptTokens,
+    }));
+  const cacheBreakdownTitle = cacheBreakdown
+    .map((row) => `${row.name}: ${formatTokens(row.cached)} / ${formatTokens(row.prompt)} 프롬프트 토큰 (${row.accounting})`)
+    .join('\n');
   const connectedProviders = providerRows.filter((provider) => provider.integration === 'connected' || provider.measurement);
   const totalsQuality = aggregateQuality(snapshot?.providers ?? []);
   const measuredProviderNames = providerRows.filter((item) => item.tokens > 0).map((item) => item.name);
@@ -80,8 +115,8 @@ export default function DashboardView({ snapshot, hookStatus, api, actionBusy, c
 
       <section className="summary-grid" aria-label="사용량 요약">
         <article className="stat-card"><div className="stat-label">이번 달 총 토큰 <span>••</span></div><strong>{formatTokens(totals.totalTokens)}</strong><p title={fieldSummaryTitle}><em className={`quality ${totalsQuality.tone}`}>● {totalsQuality.label}</em> · {measuredProviderNames.join(' · ') || '관측 대기'}</p><i className="brush mint-brush"/></article>
-        <article className="stat-card"><div className="stat-label">캐시 적중 <span>••</span></div><strong className="mint-text">{formatPercent(cachePercent)}</strong><p>{formatTokens(totals.cachedInputTokens)} / {formatTokens(totals.promptTokens)} 프롬프트 토큰</p><div className="plant" aria-hidden="true"><b>⌁</b><i/></div></article>
-        <article className="stat-card"><div className="stat-label">서버 {featuredQuota ? windowLabel(featuredQuota) : '한도'} <span>••</span></div><strong className="orange-text">{featuredQuota ? formatPercent(featuredQuota.usedPercent) : '—'}</strong><p><em className="quality server">● 서버 관측</em> {featuredQuota ? `· ${relativeTime(featuredQuota.observedAt)}` : '· 대기 중'}</p><i className="brush peach-brush"/></article>
+        <article className="stat-card"><div className="stat-label">캐시 적중 <span>••</span></div><strong className="mint-text">{formatPercent(cachePercent)}</strong><p>{formatTokens(totals.cachedInputTokens)} / {formatTokens(totals.promptTokens)} 프롬프트 토큰</p>{cacheBreakdown.length ? <p className="stat-split" title={cacheBreakdownTitle}>{cacheBreakdown.map((row) => <span key={row.id}>{row.name} <b>{formatPercent(row.percent)}</b></span>)}</p> : null}<div className="plant" aria-hidden="true"><b>⌁</b><i/></div></article>
+        <article className="stat-card"><div className="stat-label">서버 {featuredQuota ? windowLabel(featuredQuota) : '한도'}{quotaLeader ? ` · ${quotaLeader.row.name}` : ''} <span>••</span></div><strong className="orange-text">{featuredQuota ? formatPercent(featuredQuota.usedPercent) : '—'}</strong><p><em className="quality server">● 서버 관측</em> {featuredQuota ? `· ${relativeTime(featuredQuota.observedAt)}` : '· 대기 중'}</p>{quotaStates.length ? <p className="stat-split" title={quotaSplitTitle}>{quotaStates.map((entry) => <span key={entry.row.id}>{entry.row.name} <b>{entry.quota.state === 'observed' ? formatPercent(entry.window.usedPercent) : entry.quota.label}</b></span>)}</p> : null}<i className="brush peach-brush"/></article>
         <article className="stat-card"><div className="stat-label">현재 수집 AI <span>••</span></div><strong className="violet-text stat-ai">{connectedProviders.map((provider) => provider.name).join(' · ') || '대기 중'}</strong><p>{discoveredFileCount.toLocaleString('ko-KR')}개 세션 파일 · {formatTokens(totals.outputTokens)} output</p><span className="crown" aria-hidden="true">♕</span></article>
       </section>
 
@@ -96,10 +131,19 @@ export default function DashboardView({ snapshot, hookStatus, api, actionBusy, c
         </article>
 
         <article className="panel budget-panel quota-panel">
-          <div className="panel-head"><div><h2>Codex 서버 동기화 <span>••</span></h2><p className="panel-sub">토큰과 quota를 같은 숫자로 환산하지 않습니다.</p></div><span className="paw-dots">•• ••</span></div>
+          <div className="panel-head"><div><h2>서버 동기화 <span>••</span></h2><p className="panel-sub">토큰과 quota를 같은 숫자로 환산하지 않습니다.</p></div><span className="paw-dots">•• ••</span></div>
           <div className="quota-body">
-            {quotaRows.map((window, index) => <div className="quota-row" key={`${window.limitId ?? 'pending'}-${window.windowType ?? index}`}><div className="quota-copy"><span>{quotaLabel(window)}</span><strong>{window.unavailable ? '—' : formatPercent(window.usedPercent)}</strong><small>{window.unavailable ? '서버 snapshot을 기다리는 중' : resetLabel(window)}</small></div><div className="quota-track"><i style={{ width: `${window.unavailable ? 0 : window.usedPercent ?? 0}%` }}/></div></div>)}
-            <div className={`reconcile-box ${codex?.reconciliation?.status === 'UNATTRIBUTED_SERVER_USAGE' ? 'warn' : ''}`}><strong>{codex?.reconciliation?.status === 'UNATTRIBUTED_SERVER_USAGE' ? '미확인 서버 변동 있음' : serverObserved ? '서버 ↔ 로컬 대조 중' : '서버 snapshot 대기'}</strong><span>최근 대조: matched {codex?.reconciliation?.matched ?? 0} · server-only {codex?.reconciliation?.serverOnly ?? 0} · local-only {codex?.reconciliation?.localOnly ?? 0}</span></div>
+            {quotaStates.length ? quotaStates.map(({ row, quota }) => <div className="ledger-block" key={row.id}>
+              <div className="ledger-head"><span className={`ai-mark ${row.tone}`}>{row.short}</span>{row.name}<small>{quota.label ?? '서버 관측'}</small></div>
+              {quota.state === 'observed' || quota.state === 'waiting'
+                ? (quota.state === 'observed' ? providerQuotaWindows(row) : quotaPlaceholderRows).map((window, index) => <div className="quota-row" key={`${window.limitId ?? 'pending'}-${window.windowType ?? index}`}><div className="quota-copy"><span>{quotaLabel(window)}</span><strong>{window.unavailable ? '—' : formatPercent(window.usedPercent)}</strong><small>{window.unavailable ? '서버 snapshot을 기다리는 중' : resetLabel(window)}</small></div><div className="quota-track"><i style={{ width: `${window.unavailable ? 0 : window.usedPercent ?? 0}%` }}/></div></div>)
+                : <p className="ledger-note">{quota.state === 'none' ? '한도 미제공 — 이 provider는 서버 한도를 기록하지 않습니다.' : '아직 연동 전이라 서버 한도를 관측한 적이 없습니다.'}</p>}
+              {quota.state === 'none'
+                ? <div className="reconcile-box"><strong>서버 원장 없음</strong><span>로컬 관측만</span></div>
+                : quota.state === 'planned'
+                  ? null
+                  : <div className={`reconcile-box ${row.reconciliation?.status === 'UNATTRIBUTED_SERVER_USAGE' ? 'warn' : ''}`}><strong>{row.reconciliation?.status === 'UNATTRIBUTED_SERVER_USAGE' ? '미확인 서버 변동 있음' : quota.state === 'observed' ? '서버 ↔ 로컬 대조 중' : '서버 snapshot 대기'}</strong><span>최근 대조: matched {row.reconciliation?.matched ?? 0} · server-only {row.reconciliation?.serverOnly ?? 0} · local-only {row.reconciliation?.localOnly ?? 0}</span></div>}
+            </div>) : <p className="ledger-note">연동된 provider가 없어 대조할 서버 원장이 아직 없습니다.</p>}
             <CatArt className="sleep-cat" pose="sleep" label={`${currentTheme.label} 잠든 고양이 드로잉`} />
           </div>
         </article>

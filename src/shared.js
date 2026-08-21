@@ -24,9 +24,32 @@ export function formatTokens(value = 0) {
 }
 
 export function formatPercent(value, digits = 0) {
-  if (!Number.isFinite(Number(value))) return '—';
+  // null 을 따로 거릅니다. Number(null) 은 0 이라 Number.isFinite 를 통과하고,
+  // 그러면 "아직 못 잰 값"이 자신만만한 0% 로 찍힙니다(R7).
+  if (value === null || !Number.isFinite(Number(value))) return '—';
   return `${Number(value).toFixed(digits)}%`;
 }
+
+// 분모는 반드시 totals.promptTokens 입니다 — 엔진이 provider 회계에 맞춰 미리
+// 계산해 내려주는 값입니다(service/providers/accounting.mjs promptSideTokens).
+// cachedInputTokens / inputTokens 로 되돌리면 캐시가 input 밖에 있는 회계
+// (Claude: input 10, cached 9000)에서 90000% 가 나옵니다.
+// 잰 게 없으면 0% 가 아니라 null 입니다 — 0% 는 "캐시를 하나도 못 맞췄다"는
+// 다른 사실입니다(R7).
+export function cacheHitPercent(totals) {
+  const prompt = Number(totals?.promptTokens) || 0;
+  if (prompt <= 0) return null;
+  return ((Number(totals?.cachedInputTokens) || 0) / prompt) * 100;
+}
+
+// 76% 와 95% 를 나란히 놓으면 같은 종류의 숫자로 읽힙니다. 어떤 회계로 잰
+// 값인지 함께 적어야 그 비교가 거짓말이 되지 않습니다. 분기 기준은 언제나
+// provider.tokenAccounting 이고 provider.id 가 아닙니다 — id 로 나누면 회계 표가
+// 늘어날 때 화면만 조용히 옛 값을 붙잡습니다.
+export const accountingLabels = {
+  cache_in_input: '캐시 input 포함',
+  cache_disjoint: '캐시 input 분리',
+};
 
 export function relativeTime(value) {
   if (!value) return '기록 없음';
@@ -58,6 +81,35 @@ export function quotaLabel(window) {
 export function resetLabel(window) {
   if (!window?.resetsAt) return '리셋 시각 미확인';
   return `${new Date(window.resetsAt * 1000).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })} 리셋`;
+}
+
+export function providerQuotaWindows(provider) {
+  if (provider?.quotaWindows?.length) return provider.quotaWindows;
+  return [provider?.rateLimits?.primary, provider?.rateLimits?.secondary].filter(Boolean);
+}
+
+// 서버 한도는 세 가지가 아니라 네 가지 상태입니다. capabilities 가 null 인
+// provider(어댑터가 아직 없는 cursor·gemini)는 "한도가 없다"가 아니라 "아직
+// 모른다" 입니다 — !provider.capabilities?.serverQuota 한 줄로 합치면 한 번도
+// 관측한 적 없는 provider 에 '한도 미제공' 이라는 사실을 지어내게 됩니다(R7).
+// reconciliation.status 로는 구분할 수 없습니다: snapshot 이 아직 없는 Codex 와
+// 서버 원장 자체가 없는 Claude 가 둘 다 NO_SERVER_DATA 입니다(service/engine.mjs).
+export function serverQuotaState(provider) {
+  if (!provider?.capabilities) return { state: 'planned', label: '미연결' };
+  if (!provider.capabilities.serverQuota) return { state: 'none', label: '한도 미제공' };
+  if (!providerQuotaWindows(provider).length) return { state: 'waiting', label: 'snapshot 대기' };
+  return { state: 'observed', label: null };
+}
+
+// limitId 는 store 가 provider id 를 소문자로 정규화해 넣은 값입니다
+// (service/store.mjs normalizeLimitId + insertRateLimits). 'codex' 리터럴로 두면
+// 두 번째 서버 원장 provider 가 붙는 순간 조용히 남의 창을 고릅니다.
+export function featuredQuotaWindow(provider) {
+  const windows = providerQuotaWindows(provider);
+  return windows.find((window) => window.windowMinutes === 300 && window.limitId === provider?.id)
+    ?? windows.find((window) => window.windowMinutes === 300)
+    ?? windows[0]
+    ?? null;
 }
 
 export function reconcileCopy(reconciliation) {

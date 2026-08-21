@@ -125,6 +125,31 @@ test('프로젝트 키는 경로가 아니라 해시이고, 가림이 응답에�
   }
 });
 
+test('"최근" 프로젝트 목록은 토큰이 아니라 마지막 활동 순이다', () => {
+  const { root, store } = makeStore();
+  try {
+    // 오래됐지만 큰 프로젝트(120 x 3) 대 오늘 만진 작은 프로젝트(120). offset 과
+    // timestamp 를 모두 다르게 줘야 event_key 중복 판정에 삼켜지지 않습니다.
+    insert(store, { offset: 0, timestamp: '2026-08-01T03:00:00.000Z', cwd: '/repo/big-old', projectName: 'big-old', sessionId: 'session-old' });
+    insert(store, { offset: 1, timestamp: '2026-08-01T04:00:00.000Z', cwd: '/repo/big-old', projectName: 'big-old', sessionId: 'session-old' });
+    insert(store, { offset: 2, timestamp: '2026-08-01T05:00:00.000Z', cwd: '/repo/big-old', projectName: 'big-old', sessionId: 'session-old' });
+    insert(store, { offset: 3, timestamp: '2026-08-20T09:00:00.000Z', cwd: '/repo/fresh', projectName: 'fresh', sessionId: 'session-new' });
+
+    for (const projects of [store.getRecentProjectsAcrossProviders(6), store.getRecentProjects('codex')]) {
+      assert.equal(projects[0].name, 'fresh', '"최근" 패널의 첫 행은 마지막 활동이 가장 최신인 프로젝트여야 합니다');
+      assert.equal(projects[1].name, 'big-old', '크고 오래된 프로젝트가 최신 프로젝트를 밀어내면 안 됩니다');
+      // 이 픽스처가 두 정렬을 실제로 갈라놓는지 함께 못박습니다. 토큰 순이면 순서가 뒤집힙니다.
+      assert.ok(projects[1].totalTokens > projects[0].totalTokens, '픽스처가 토큰 순과 활동 순을 구분하지 못합니다');
+    }
+
+    // 프로젝트 화면은 일부러 토큰 순으로 남깁니다 — 두 화면의 정렬이 다른 것이 의도입니다.
+    assert.equal(store.getProjectBreakdown({})[0].name, 'big-old');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('한도 이력은 percent만 담고 토큰을 섞지 않는다', () => {
   const { root, store } = makeStore();
   try {

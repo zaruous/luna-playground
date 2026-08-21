@@ -23,13 +23,13 @@
 | [menus/usage.md](./menus/usage.md) | `usage` (AI 사용량) | 구현됨 (M2) |
 | [menus/session.md](./menus/session.md) | `session` (세션 흐름) | **구현됨 (M8)** — 턴 단위 토큰 배분, 프로젝트 탭과 양방향 이동 |
 | [menus/project.md](./menus/project.md) | `project` (프로젝트) | 구현됨 (M2) |
-| [menus/budget.md](./menus/budget.md) | `budget` (동기화) | 미구현 (수집 칩·Hook 버튼만 대시보드에 존재) |
+| [menus/budget.md](./menus/budget.md) | `budget` (동기화) | **구현됨 (M4 동기화 절반)** — provider 상태 카드 · provider별 Hook · 한도 이력 · 대조 타임라인 · 진단 |
 | [menus/alert.md](./menus/alert.md) | `alert` (알림) | 미구현 |
 | [menus/settings.md](./menus/settings.md) | `settings` (설정) | 미구현 (스킨 선택만 헤더에 존재) |
 
 각 메뉴 문서는 화면 미리보기(SVG 와이어프레임), 화면 요소 정의, 필요한 API, 필요한 스토어 쿼리, 완료 기준을 같은 순서로 담습니다.
 
-구현된 화면에서 발견한 개선 항목은 그 화면의 메뉴 문서 안 **`## TODO`** 절에 모읍니다 — 별도 TODO 파일을 두지 않는 이유는 항목이 화면 설계와 떨어지면 맥락을 잃기 때문입니다. 지금 열려 있는 것은 [menus/dashboard.md](./menus/dashboard.md) 의 T1·T2 이고, [implementation-plan.md](./implementation-plan.md) 의 M9 로도 등록해 두었습니다.
+구현된 화면에서 발견한 개선 항목은 그 화면의 메뉴 문서 안 **`## TODO`** 절에 모읍니다 — 별도 TODO 파일을 두지 않는 이유는 항목이 화면 설계와 떨어지면 맥락을 잃기 때문입니다. [menus/dashboard.md](./menus/dashboard.md) 의 T1·T2 는 [implementation-plan.md](./implementation-plan.md) 의 M9 로 닫혔고, 두 절에 무엇이 들어갔고 무엇이 남았는지 적어 뒀습니다. 새로 열려 있는 `## TODO` 절은 없습니다.
 
 ## 설계 원칙 (상위 문서에서 승계)
 

@@ -88,16 +88,16 @@ M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 �
 - 프롬프트/응답 텍스트가 SQLite 파일 바이트와 HTTP 스냅샷 어디에도 없습니다 — `test/claude-privacy.test.mjs`
 - 실제 코퍼스(214 파일 / 요청 13,757건 / 40억 토큰)에서 ccusage와 네 범주·총합이 **정확히 일치**합니다
 
-## M9 — 대시보드 provider 분리 · 최근 정렬 (다음 작업)
+## M9 — 대시보드 provider 분리 · 최근 정렬 — 완료
 
 문서: [menus/dashboard.md](./menus/dashboard.md) 의 **TODO T1 / T2**
 
-실제 화면을 보고 확정한 두 항목입니다. 새 기능이 아니라 **지금 화면이 사실과 다르게 보이는 것**을 고칩니다.
+실제 화면을 보고 확정한 두 항목이었습니다. 새 기능이 아니라 **화면이 사실과 다르게 보이던 것**을 고쳤습니다.
 
-- **T1** 요약 카드 3장(`캐시 적중` / `서버 주간 한도` / `Codex 서버 동기화`)을 provider별로 분리. 한도를 주지 않는 provider는 0%가 아니라 "미제공"(R7). 캐시 적중률 분모는 회계가 반영된 `promptTokens`
-- **T2** "최근 프로젝트 발자국"을 `last_activity DESC` 로 정렬. 지금은 토큰 순이라 오늘 만진 프로젝트가 목록에 없습니다. 토큰 순 목록은 프로젝트 화면이 이미 담당
+- **완료 T1** 요약 카드와 서버 동기화 패널을 provider별로 분리. 한도를 주지 않는 provider는 0%가 아니라 "한도 미제공"(R7), 캐시 적중률 분모는 회계가 반영된 `promptTokens`. 분기는 provider id 가 아니라 `capabilities` 를 보는 `src/shared.js` 의 `serverQuotaState` · `cacheHitPercent` · `featuredQuotaWindow`
+- **완료 T2** "최근 프로젝트 발자국"을 `last_activity DESC` 로 정렬(`service/store.mjs` 의 `getRecentProjects` · `getRecentProjectsAcrossProviders`). 토큰 순 목록은 프로젝트 화면이 계속 담당하고, `test/usage-aggregation.test.mjs` 가 한 픽스처로 두 정렬을 함께 못박습니다
 
-둘 다 스냅샷·API 모양 변화가 없어 스토어 정렬과 화면 분기만 손대면 됩니다.
+예고대로 스냅샷·API 모양 변화는 없었고 스토어 정렬과 화면 분기만 손댔습니다. 남은 잔여(수집 칩의 Hook 이 아직 Codex 전용, 토큰 분해 줄이 아직 provider 합산)는 [menus/dashboard.md](./menus/dashboard.md) 의 T1 절에 적어 뒀습니다.
 
 ---
 
@@ -139,20 +139,20 @@ M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 �
 
 ---
 
-## M4 — 동기화 · 알림
+## M4 — 동기화 · 알림 — 동기화 완료 / 알림 미구현
 
 문서: [menus/budget.md](./menus/budget.md), [menus/alert.md](./menus/alert.md)
 
 **산출물**
 
-- 동기화 화면: provider별 연결 상태, hook 설치/해제, 재스캔, 한도 snapshot 이력, reconciliation 타임라인, 진단
-- API: `GET /api/v1/reconciliation`, `GET /api/v1/quota/history`
-- 알림: `alert_rules`/`alert_events` 테이블, 서비스 프로세스 내 평가기, `GET|POST|PATCH|DELETE /api/v1/alerts` — 규칙 입력 검증은 `zod` 스키마([라이브러리 채택 검토](#라이브러리-채택-검토))
-- 알림 종류: 한도 백분율 임계, 토큰/비용 예산, **수집 중단 감지**(watcher 오류 또는 마지막 스캔 지연)
+- **완료** 동기화 화면(`src/views/BudgetView.jsx`, 한도 추이 `src/views/QuotaHistory.jsx`): provider별 연결 상태, hook 설치/해제, 재스캔, 한도 snapshot 이력, reconciliation 타임라인, 진단
+- **완료** API: `GET /api/v1/quota/history`(`service/api-server.mjs:290`). `GET /api/v1/reconciliation` 은 **만들지 않았습니다** — 화면이 이미 받는 스냅샷의 `providers[].reconciliation.recent`(`service/engine.mjs:152`)로 대체했습니다. 근거와 되돌릴 조건은 [menus/budget.md](./menus/budget.md#신규-api)
+- **미구현** 알림: `alert_rules`/`alert_events` 테이블, 서비스 프로세스 내 평가기, `GET|POST|PATCH|DELETE /api/v1/alerts` — 규칙 입력 검증은 `zod` 스키마([라이브러리 채택 검토](#라이브러리-채택-검토))
+- **미구현** 알림 종류: 한도 백분율 임계, 토큰/비용 예산, **수집 중단 감지**(watcher 오류 또는 마지막 스캔 지연)
 
 **설계 결정**: 평가는 서비스에서 합니다. 창을 닫아도 알림이 동작해야 하고, 브라우저 탭 상태에 규칙 평가가 좌우되면 안 됩니다. 전달은 우선 앱 내 목록 + SSE 이벤트로 하고, OS 알림은 후속(브라우저 Notification 권한 필요).
 
-**완료 기준**
+**완료 기준** — 아래 셋은 전부 **알림** 절반의 기준이고 셋 다 미달입니다(`src/views/AlertView.jsx` 는 아직 자리표시자). 동기화 절반의 기준과 달성 여부는 [menus/budget.md](./menus/budget.md#완료-기준) 의 체크박스에 있습니다.
 
 - 규칙이 임계를 넘으면 `alert_events`에 `fired`가 남고 SSE로 즉시 전달된다
 - 한도가 리셋되면 같은 규칙이 `resolved`로 닫힌다

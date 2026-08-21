@@ -57,11 +57,11 @@ provider 총합의 배지는 **구성 필드 중 최저 등급**입니다. 총�
 
 ## TODO — 확정된 개선 항목
 
-아래는 실제 화면을 보고 확정한 항목입니다. 설계 의도가 아니라 **지금 화면이 틀리게 보이는 것**을 고치는 작업이라 우선순위가 높습니다.
+아래는 실제 화면을 보고 확정한 항목입니다. 설계 의도가 아니라 **화면이 틀리게 보이는 것**을 고치는 작업이었고, 둘 다 M9 에서 닫혔습니다. 무엇이 왜 틀렸는지는 되돌릴 때 필요하므로 남겨 둡니다.
 
-### T1. 요약 카드 3장을 provider별로 쪼갠다
+### T1. 요약 카드 3장을 provider별로 쪼갠다 — 완료 (M9)
 
-`캐시 적중` · `서버 주간 한도` · `Codex 서버 동기화` 세 항목이 지금 사실과 다르게 보입니다.
+`캐시 적중` · `서버 주간 한도` · `Codex 서버 동기화` 세 항목이 **M9 이전에는** 사실과 다르게 보였습니다. 아래 표의 "지금" 칸은 그때 상태입니다.
 
 | 항목 | 지금 | 문제 | 되어야 하는 것 |
 |---|---|---|---|
@@ -77,21 +77,33 @@ provider 총합의 배지는 **구성 필드 중 최저 등급**입니다. 총�
 - 한도는 `provider.capabilities.serverQuota`로 "미제공"을 판단합니다. Claude는 `false`
 - 카드 자리가 부족하면 요약 카드는 합산 + 툴팁에 provider별 내역, 상세는 [동기화 화면](./budget.md)에 provider별 카드로 두는 분담도 가능합니다
 
-### T2. 최근 프로젝트 발자국을 마지막 활동 순으로
+들어간 것은 그 마지막 분담안입니다.
 
-"최근 프로젝트 발자국"인데 정렬이 **토큰 순**입니다(`store.getRecentProjectsAcrossProviders`의 `ORDER BY total_tokens DESC`). 그래서 오늘 만진 프로젝트가 목록에 없고, 몇 주 전의 큰 프로젝트가 계속 위에 남습니다.
+- 요약 카드는 합산값을 그대로 두고 그 아래 provider별 한 줄을 깝니다. 회계 이름(`캐시 input 포함` / `캐시 input 분리`)과 분모는 툴팁에 적습니다(`src/views/DashboardView.jsx:118-119`, `src/shared.js` 의 `accountingLabels`)
+- 서버 동기화 패널은 provider별 블록으로 갈라졌고 제목에서 `Codex` 가 빠졌습니다(`DashboardView.jsx:134-146`)
+- 한도·대조 분기는 provider id 가 아니라 `capabilities` 를 봅니다. `serverQuotaState()` 가 `미연결`/`한도 미제공`/`snapshot 대기`/관측됨 네 갈래를 냅니다(`src/shared.js`) — `reconciliation.status` 로 가르지 않는 이유는 snapshot 이 아직 없는 Codex 와 서버 원장 자체가 없는 Claude 가 둘 다 `NO_SERVER_DATA` 이기 때문입니다
+- 한도 카드의 큰 숫자는 여전히 provider 하나의 값입니다. 서로 다른 구독의 percent 에는 공통 분모가 없어 평균내지 않고(R5), 사용률이 가장 높은 provider 를 세운 뒤 **카드 제목에 그 이름을 적습니다**
+
+남은 잔여 둘:
+
+- 수집 상태 칩의 `Hook` 은 아직 Codex 상태만 보여줍니다 — `src/App.jsx:123` 이 `hookStatuses.codex` 만 넘깁니다. Claude hook 은 [동기화 화면](./budget.md)에만 나옵니다
+- `AI별 사용량` 패널 아래 토큰 분해 줄(`DashboardView.jsx:130`)은 여전히 provider 합산입니다. `Input` 은 Codex에서 캐시 읽기를 포함하고 Claude에서는 포함하지 않으므로([토큰 사용량 측정](../../토큰%20사용량%20측정.md)), 서로 다른 것을 세는 두 값을 한 칸에 더해 보여주는 셈입니다. 카드가 아니라 이 줄이 T1 의 남은 절반입니다
+
+### T2. 최근 프로젝트 발자국을 마지막 활동 순으로 — 완료 (M9)
+
+"최근 프로젝트 발자국"인데 정렬이 **토큰 순**이었습니다. 그래서 오늘 만진 프로젝트가 목록에 없고, 몇 주 전의 큰 프로젝트가 계속 위에 남았습니다.
 
 ```sql
--- 지금
+-- M9 이전
 ORDER BY total_tokens DESC
--- 되어야 하는 것
+-- 지금 (service/store.mjs 의 getRecentProjects · getRecentProjectsAcrossProviders)
 ORDER BY last_activity DESC
 ```
 
 - 패널 제목이 "최근"이므로 **마지막 활동이 가장 최신인 것이 항상 맨 위**여야 합니다
 - 토큰 순 목록이 필요하면 [프로젝트 화면](./project.md)이 이미 그 역할입니다 — 두 화면의 정렬 기준을 다르게 두는 것이 의도입니다
-- `getRecentProjects`(provider 단위)도 같은 문제를 갖고 있으니 함께 봅니다
-- 정렬만 바꾸면 되므로 API·스냅샷 모양 변화는 없습니다. `test/usage-aggregation.test.mjs`에 "최신 활동이 먼저 온다" 단정을 추가합니다
+- `getRecentProjects`(provider 단위)도 같은 문제였고 함께 고쳤습니다
+- 정렬만 바꿨으므로 API·스냅샷 모양 변화는 없습니다. `test/usage-aggregation.test.mjs` 에 "최신 활동이 먼저 온다" 단정을 추가했고, 같은 픽스처로 프로젝트 화면이 여전히 토큰 순인 것도 함께 못박습니다
 
 ## 완료 기준
 
@@ -99,8 +111,8 @@ ORDER BY last_activity DESC
 - [ ] 기간 전환 시 카드/차트/프로젝트가 같은 기간을 사용
 - [ ] planned provider가 0이 아니라 `—`로 표시됨
 - [ ] 품질 배지가 provider별로 다르게 표시됨 (Codex `로컬 관측`, Claude `추정`)
-- [ ] (T1) 캐시 적중·서버 한도·서버 동기화가 provider별로 갈라져 보이고, 한도를 주지 않는 provider는 0%가 아니라 "미제공"으로 표시됨
-- [ ] (T2) 최근 프로젝트 발자국의 첫 행이 항상 마지막 활동이 가장 최신인 프로젝트임
+- [x] (T1) 캐시 적중·서버 한도·서버 동기화가 provider별로 갈라져 보이고, 한도를 주지 않는 provider는 0%가 아니라 "한도 미제공"으로 표시됨 — `src/shared.js` 의 `serverQuotaState`/`cacheHitPercent`, `src/views/DashboardView.jsx:118-119,136-146`. 화면을 렌더링하는 테스트는 아직 없어 코드 대조로 확인했습니다
+- [x] (T2) 최근 프로젝트 발자국의 첫 행이 항상 마지막 활동이 가장 최신인 프로젝트임 — `test/usage-aggregation.test.mjs` 의 "'최근' 프로젝트 목록은 토큰이 아니라 마지막 활동 순이다"
 
 ## 하지 않는 것
 
