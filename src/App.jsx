@@ -49,7 +49,9 @@ function App() {
 
   const api = useMemo(() => createUsageClient(window.__NYANG_TRACKER_CONFIG__), []);
   const currentTheme = catThemes.find((theme) => theme.id === catTheme) || catThemes[0];
-  const collectorDetected = Boolean(snapshot?.providers?.find((item) => item.id === 'codex')?.collector?.detected);
+  // provider 하나를 지목하면 안 됩니다 — Claude 만 수집 중인데 "WAITING CODEX" 는 거짓입니다.
+  const collectingProviders = (snapshot?.providers ?? []).filter((item) => item.collector?.detected);
+  const collectorDetected = collectingProviders.length > 0;
 
   useEffect(() => {
     window.localStorage.setItem('nyangtracker-cat-theme', catTheme);
@@ -117,10 +119,10 @@ function App() {
   }
 
   const viewProps = {
+    // 대시보드도 동기화 화면과 같은 provider 별 상태를 그대로 읽습니다.
+    // hookStatuses.codex 하나만 골라 넘기면 M3 부터 있던 Claude hook 이 대시보드
+    // 에서만 사라지고, 칩의 'Hook 연결' 이 누구 이야기인지 알 수 없게 됩니다.
     snapshot, hookStatuses, api, actionBusy, currentTheme,
-    // 대시보드의 단일 Hook 버튼은 Codex 를 가리킵니다 — provider 별 설정은
-    // 동기화 화면에서 합니다.
-    hookStatus: hookStatuses.codex ?? null,
     onToggleHooks: toggleHooks,
     onRescan: rescan,
   };
@@ -152,7 +154,7 @@ function App() {
             <CatArt className="header-cat" pose="header" label={`${currentTheme.label} 쿠션 고양이 드로잉`} />
           </div>
           <div className="top-actions">
-            <span className={`live-pill ${collectorDetected ? 'live-pill--real' : ''}`}><i/> {collectorDetected ? 'LIVE LOCAL' : 'WAITING CODEX'}</span>
+            <span className={`live-pill ${collectorDetected ? 'live-pill--real' : ''}`}><i/> {collectorDetected ? 'LIVE LOCAL' : 'WAITING LOGS'}</span>
             <button className="sync-button" type="button" onClick={rescan} disabled={!api?.usage || actionBusy}>{actionBusy ? '확인 중…' : '지금 동기화'}</button>
             <div className="skin-control">
               <button className="skin-trigger" type="button" aria-haspopup="dialog" aria-expanded={skinOpen} onClick={() => setSkinOpen((value) => !value)}><CatArt pose="face" decorative /><span><small>CAT SKIN</small><strong>{currentTheme.label}</strong></span><b aria-hidden="true">⌄</b></button>

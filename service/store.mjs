@@ -862,6 +862,10 @@ export class UsageStore {
   // 프로젝트가 LIMIT 자리를 계속 차지해 오늘 만진 프로젝트가 아예 안 보입니다.
   // 토큰 순위는 프로젝트 화면(getProjectBreakdown)이 맡습니다 — 두 화면의
   // 정렬 기준이 다른 것이 의도입니다.
+  // 마지막 활동이 같은 초인 프로젝트는 흔합니다. 그 동률을 GROUP BY 임시
+  // b-tree 가 내주는 순서에 맡기면 같은 데이터인데도 새로고침마다 목록이
+  // 뒤바뀌므로, 세션 목록(getProjectSessions)이 암묵적으로 기대던 그룹 키 순을
+  // 여기서는 명시합니다. 보조 키를 토큰으로 두면 토큰 순위가 슬쩍 되살아납니다.
   getRecentProjects(provider = 'codex', limit = 6, since = null) {
     const timeClause = since ? 'AND COALESCE(event_timestamp, observed_at) >= ?' : '';
     const args = since ? [provider, since, limit] : [provider, limit];
@@ -877,7 +881,7 @@ export class UsageStore {
       FROM usage_events
       WHERE provider = ? ${timeClause}
       GROUP BY project_name
-      ORDER BY last_activity DESC
+      ORDER BY last_activity DESC, project_name ASC
       LIMIT ?
     `).all(...args);
     return rows.map((row) => ({
@@ -891,6 +895,7 @@ export class UsageStore {
     }));
   }
 
+  // 정렬 규칙은 위 getRecentProjects 와 같습니다 — 동률은 그룹 키 순입니다.
   getRecentProjectsAcrossProviders(limit = 6, since = null) {
     const timeClause = since ? 'WHERE COALESCE(event_timestamp, observed_at) >= ?' : '';
     const args = since ? [since, limit] : [limit];
@@ -907,7 +912,7 @@ export class UsageStore {
       FROM usage_events
       ${timeClause}
       GROUP BY provider, project_name
-      ORDER BY last_activity DESC
+      ORDER BY last_activity DESC, provider ASC, project_name ASC
       LIMIT ?
     `).all(...args);
     const aliases = this.#aliasIndex();

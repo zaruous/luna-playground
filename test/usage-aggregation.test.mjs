@@ -150,6 +150,47 @@ test('"최근" 프로젝트 목록은 토큰이 아니라 마지막 활동 순�
   }
 });
 
+test('마지막 활동이 동률이면 토큰이 아니라 그룹 키 순으로 갈린다', () => {
+  // 같은 초에 마지막 이벤트가 찍힌 세 프로젝트. 큰 쪽 이름을 뒤에 둬서 토큰 순
+  // 정렬로 되돌아가면 기대 순서가 통째로 뒤집히게 만든 픽스처입니다.
+  const rows = [
+    { offset: 0, timestamp: '2026-08-20T07:00:00.000Z', cwd: '/repo/zz-big', projectName: 'zz-big', sessionId: 'session-big' },
+    { offset: 1, timestamp: '2026-08-20T08:00:00.000Z', cwd: '/repo/zz-big', projectName: 'zz-big', sessionId: 'session-big' },
+    { offset: 2, timestamp: '2026-08-20T09:00:00.000Z', cwd: '/repo/zz-big', projectName: 'zz-big', sessionId: 'session-big' },
+    { offset: 3, timestamp: '2026-08-20T09:00:00.000Z', cwd: '/repo/aa-small', projectName: 'aa-small', sessionId: 'session-small' },
+  ];
+  // 넣는 순서를 뒤집어도 같은 목록이어야 합니다. SQLite 가 지금은 우연히 그룹 키
+  // 순으로 내주기도 하지만 그건 실행 계획이 바뀌면 사라지는 순서라, 여기서
+  // 못박는 것은 그 우연이 아니라 쿼리가 ORDER BY 로 약속한 순서입니다.
+  for (const ordered of [rows, [...rows].reverse()]) {
+    const { root, store } = makeStore();
+    try {
+      for (const row of ordered) insert(store, row);
+      // provider 동률도 함께 못박습니다. 같은 이름이 두 provider 에 있는 것은
+      // 한 저장소를 두 CLI 로 만졌을 때 그대로 생깁니다.
+      store.upsertUsageEvent({
+        type: 'usage', provider: 'claude', eventTimestamp: '2026-08-20T09:00:00.000Z',
+        session: { provider: 'claude', sessionId: 'session-claude', cwd: '/repo/aa-small', projectName: 'aa-small', model: 'claude-opus-5' },
+        eventKey: 'claude|msg_tie|req_tie',
+        delta: { inputTokens: 10, cachedInputTokens: 30, cacheWriteInputTokens: 0, outputTokens: 10, reasoningTokens: 0, totalTokens: 50 },
+      }, '/claude.jsonl', 0);
+
+      assert.deepEqual(
+        store.getRecentProjectsAcrossProviders(6).map((project) => `${project.provider}|${project.name}`),
+        ['claude|aa-small', 'codex|aa-small', 'codex|zz-big'],
+      );
+
+      const projects = store.getRecentProjects('codex');
+      assert.deepEqual(projects.map((project) => project.name), ['aa-small', 'zz-big']);
+      assert.equal(projects[0].lastActivity, projects[1].lastActivity, '픽스처가 동률을 만들지 못했습니다');
+      assert.ok(projects[1].totalTokens > projects[0].totalTokens, '토큰 순이면 순서가 뒤집히는 픽스처여야 합니다');
+    } finally {
+      store.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test('한도 이력은 percent만 담고 토큰을 섞지 않는다', () => {
   const { root, store } = makeStore();
   try {

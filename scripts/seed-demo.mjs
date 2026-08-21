@@ -84,6 +84,19 @@ function isoAt(date) {
   return new Date(date).toISOString();
 }
 
+// 실제 Codex 는 rollout 을 세션이 '시작된' 날짜 디렉터리에 넣습니다. 그래서
+// 날짜는 항상 세션 시작 순간에서 뽑습니다 — 기준일에서 뽑으면 자정을 넘겨
+// 시작한 세션이 하루 뒤 폴더에 쌓입니다.
+function dayDirFor(root, instant) {
+  const day = new Date(instant);
+  return path.join(
+    root,
+    String(day.getUTCFullYear()),
+    String(day.getUTCMonth() + 1).padStart(2, '0'),
+    String(day.getUTCDate()).padStart(2, '0'),
+  );
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -108,14 +121,6 @@ function main() {
 
   for (let dayOffset = args.days - 1; dayOffset >= 0; dayOffset -= 1) {
     const dayStart = now - dayOffset * dayMs;
-    const day = new Date(dayStart);
-    const dir = path.join(
-      sessionsRoot,
-      String(day.getUTCFullYear()),
-      String(day.getUTCMonth() + 1).padStart(2, '0'),
-      String(day.getUTCDate()).padStart(2, '0'),
-    );
-    fs.mkdirSync(dir, { recursive: true });
 
     const sessionsToday = 1 + Math.floor(random() * 3);
     for (let sessionIndex = 0; sessionIndex < sessionsToday; sessionIndex += 1) {
@@ -130,6 +135,10 @@ function main() {
       // 미래 시각 이벤트가 나오지 않습니다.
       const hoursBack = 3 + Math.floor(random() * 8);
       const sessionStart = dayStart - hoursBack * 3_600_000;
+      // 디렉터리는 기준일이 아니라 이 세션의 시작 시각에서 뽑습니다. service/ 는
+      // 경로의 날짜를 읽지 않지만, 실제 구조를 재현하는 게 이 스크립트의 일입니다.
+      const dir = dayDirFor(sessionsRoot, sessionStart);
+      fs.mkdirSync(dir, { recursive: true });
 
       const lines = [
         JSON.stringify({ timestamp: isoAt(sessionStart), type: 'session_meta', payload: { id: sessionId, cwd: project.cwd, timestamp: isoAt(sessionStart) } }),
@@ -178,8 +187,11 @@ function main() {
           }
 
           // 컴팩션 직후 첫 요청은 프롬프트가 실제로 짧아집니다. 새로 뽑지 않고
-          // 직전 요청을 기준으로 줄여야 곡선의 꺾임이 반드시 보입니다. 줄이는
-          // 건 last 쪽뿐 — 누적을 내리면 파서가 리셋으로 보고 이벤트를 버립니다.
+          // 직전 요청을 기준으로 줄여야 곡선의 꺾임이 반드시 보입니다. 줄이는 건
+          // last 쪽뿐 — 누적을 내려도 파서(codex/parser.mjs)는 이벤트를 버리지
+          // 않고 reset:true 로 실어 보냅니다(cumulative_reset=1). 그러면 진단의
+          // '누적 리셋' 칸이 컴팩션마다 올라가 진짜 파싱 이상과 구분되지 않고,
+          // 감소 폭이 작으면 stale 회귀 가드에 걸려 그 이벤트만 통째로 사라집니다.
           const compacting = turn === compactTurn && request === 0;
           // 캐시 적중이 지배적인 실제 코딩 세션 형태를 흉내냅니다.
           const input = compacting

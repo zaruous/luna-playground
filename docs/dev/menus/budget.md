@@ -42,7 +42,7 @@ POST   /api/v1/providers/:provider/hooks    → 설치 후 상태
 DELETE /api/v1/providers/:provider/hooks    → 해제 후 상태
 ```
 
-응답 모양은 provider마다 다릅니다. Codex는 `{ installed, installedEvents, expectedEvents, hooksPath, command }`(`service/providers/codex/hooks.mjs:58-71`), Claude는 여기에 `state`(`installed`/`partial`/`not_installed`, 읽기 실패 시 `conflict`)와 `settingsPath` 가 더 붙습니다(`claude/hooks.mjs:78-99`). 화면은 `settingsPath ?? hooksPath` 로 둘을 함께 받습니다(`src/views/BudgetView.jsx:87`). 어댑터가 없는 provider는 503 `hooks_unavailable` 입니다.
+응답 모양은 provider마다 다릅니다. Codex는 `{ installed, installedEvents, expectedEvents, hooksPath, command }`(`service/providers/codex/hooks.mjs:58-71`), Claude는 여기에 `state`(`installed`/`partial`/`not_installed`, 읽기 실패 시 `conflict`)와 `settingsPath` 가 더 붙습니다(`claude/hooks.mjs:78-99`). 화면은 `settingsPath ?? hooksPath` 로 둘을 함께 받습니다(`src/views/BudgetView.jsx:87`). 503 `hooks_unavailable` 의 조건은 어댑터 등록이 아니라 **서버 생성자가 받은 `hookInstallers` 맵에 그 이름이 있는지**입니다(`service/api-server.mjs:81-82,224`) — 지금 맵에 들어가는 것은 `scripts/usage-service.mjs:30-33` 이 넣는 codex·claude 둘이고, 옛 단수 `hookInstaller` 인자는 codex 항목으로 흡수됩니다. 경로 정규식이 `[a-z0-9_-]+` 를 그대로 받으므로 존재하지 않는 provider 이름도 404 가 아니라 같은 503 을 받고, 메서드 검사가 맵 조회 뒤에 있어 등록되지 않은 provider 에는 405 대신 503 이 갑니다.
 
 화면에 반드시 넣을 문구: **hook은 가속 경로이고 수집 근거는 항상 로그**라는 점. 사용자가 hook을 끄면 실시간성이 떨어질 뿐 데이터가 사라지지 않습니다.
 
