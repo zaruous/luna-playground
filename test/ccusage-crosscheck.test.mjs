@@ -21,6 +21,10 @@ import { CodexCollector } from '../service/providers/codex/collector.mjs';
 
 const require = createRequire(import.meta.url);
 
+// ccusage 는 플랫폼별 네이티브 바이너리를 optionalDependencies 로 받습니다.
+// 지원 목록에 없는 환경(예: musl 기반 Alpine, 그 밖의 arch)에서는 cli.js 는
+// 있지만 실행 바이너리가 없어 spawn 이 실패합니다. 그러면 "환경에 없음"이
+// 테스트 실패로 보이므로, 실패시키지 않고 skip 하도록 미리 확인합니다.
 function findCcusageCli() {
   try {
     const pkgPath = require.resolve('ccusage/package.json');
@@ -28,14 +32,20 @@ function findCcusageCli() {
     const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.ccusage;
     if (!bin) return null;
     const cli = path.join(path.dirname(pkgPath), bin);
-    return fs.existsSync(cli) ? cli : null;
+    if (!fs.existsSync(cli)) return null;
+    // 이 플랫폼용 네이티브 패키지가 실제로 설치됐는지 확인합니다.
+    const natives = Object.keys(pkg.optionalDependencies ?? {});
+    if (natives.length && !natives.some((name) => {
+      try { require.resolve(`${name}/package.json`); return true; } catch { return false; }
+    })) return null;
+    return cli;
   } catch {
     return null;
   }
 }
 
 const ccusageCli = findCcusageCli();
-const skip = ccusageCli ? false : 'ccusage 미설치 — npm i -D ccusage 후 실행하세요';
+const skip = ccusageCli ? false : 'ccusage 또는 이 플랫폼용 네이티브 바이너리 미설치 — npm i -D ccusage 후 실행하세요';
 
 // 결정적인 rollout 픽스처. 누적 스냅샷과 턴 증분을 함께 담아 두 구현이
 // 같은 증분 규칙을 쓰는지 확인합니다.
