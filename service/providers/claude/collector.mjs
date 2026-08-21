@@ -4,6 +4,7 @@ import path from 'node:path';
 import { UsageProviderAdapter } from '../contracts.mjs';
 import { accountingOf } from '../accounting.mjs';
 import { readCompleteLines } from '../jsonl-tail.mjs';
+import { applyParserTail } from '../../scan-pool.mjs';
 import {
   claudeProjectRoots,
   detectClaudeRoots,
@@ -99,7 +100,10 @@ export class ClaudeCollector extends UsageProviderAdapter {
     return task;
   }
 
-  async #scanFileInternal(filePath, reason) {
+  // 스캔은 준비 → 적재 → 마감 세 단계입니다. 파일을 이 스레드에서 직접 읽든
+  // (scanFile) 워커가 읽어 배치로 보내오든(backfill) 스토어에 반영하는 규칙은
+  // 한 곳에만 있어야 합니다.
+  async prepareScan(filePath) {
     let scanState = this.store.getScanState(this.id, filePath);
     let startOffset = scanState?.byteOffset ?? 0;
 
@@ -107,7 +111,7 @@ export class ClaudeCollector extends UsageProviderAdapter {
     try {
       currentStat = await fsp.stat(filePath);
     } catch {
-      return { changed: false, reason: 'missing' };
+      return { skip: 'missing' };
     }
 
     // 절단/교체 감지 → 커서를 버리고 처음부터 안전 재스캔합니다. 이벤트 키가
@@ -132,12 +136,13 @@ export class ClaudeCollector extends UsageProviderAdapter {
     }
 
     if (startOffset === currentStat.size && scanState?.mtimeMs === currentStat.mtimeMs) {
-      return { changed: false, reason: 'unchanged' };
+      return { skip: 'unchanged' };
     }
 
     const storedSession = scanState?.sessionId ? this.store.getSession('claude', scanState.sessionId) : null;
-    const parserState = createClaudeParserState({
-      filePath,
+    // 파서 상태는 이 씨앗만으로 결정됩니다. 워커에는 상태가 아니라 씨앗을
+    // 보내고, 워커가 같은 상태를 다시 만듭니다.
+    const seed = {
       projectsRoot: this.#projectsRootFor(filePath),
       session: storedSession,
       // 처음부터 읽을 때는 턴 번호도 1번부터 다시 셉니다. 이어 읽을 때는
@@ -149,18 +154,20 @@ export class ClaudeCollector extends UsageProviderAdapter {
             compactedPending: false,
           }
         : null,
-    });
+    };
+    const parserState = createClaudeParserState({ filePath, ...seed });
     // 전체 재스캔이면 이 세션의 턴 경계를 지우고 다시 만듭니다 — 턴 번호는
     // 스캔 시작점에 따라 달라질 수 있어 재구성이 안전합니다.
     if (startOffset === 0 && !parserState.subagentFile) {
       this.store.resetTurns('claude', parserState.session.sessionId);
     }
+    return { startOffset, parserState, seed };
+  }
 
-    let changed = false;
-    let usageEvents = 0;
-    let updatedEvents = 0;
-    let turnEvents = 0;
-    let parseErrors = 0;
+  // 이벤트를 모아 트랜잭션으로 한 번에 넣습니다. 도착 순서를 그대로 지켜야
+  // 세션·턴이 그 뒤의 사용량보다 먼저 들어갑니다.
+  createScanSink(filePath) {
+    const counters = { changed: false, usageEvents: 0, updatedEvents: 0, turnEvents: 0, parseErrors: 0 };
     let pending = [];
 
     const flush = () => {
@@ -169,41 +176,39 @@ export class ClaudeCollector extends UsageProviderAdapter {
       pending = [];
       this.store.transaction(() => {
         for (const { event, sourceOffset, observedAt } of batch) {
-          // Claude 는 같은 요청이 여러 줄로 나뉘고 resume 시 파일이 복사되므로
-          // insert 가 아니라 요청 단위 upsert 입니다(R1 last-wins).
-          const result = this.store.upsertUsageEvent(event, filePath, sourceOffset, observedAt);
-          if (!result.changed) continue;
-          changed = true;
-          if (result.inserted) usageEvents += 1;
-          else updatedEvents += 1;
+          if (event.type === 'session') {
+            this.store.upsertSession(event.session, filePath, observedAt);
+          } else if (event.type === 'turn') {
+            // 턴 경계는 사실이라 그대로 씁니다. 토큰은 여기 담지 않습니다.
+            this.store.upsertTurn(event);
+            counters.turnEvents += 1;
+            counters.changed = true;
+          } else if (event.type === 'usage') {
+            // Claude 는 같은 요청이 여러 줄로 나뉘고 resume 시 파일이 복사되므로
+            // insert 가 아니라 요청 단위 upsert 입니다(R1 last-wins).
+            const result = this.store.upsertUsageEvent(event, filePath, sourceOffset, observedAt);
+            if (!result.changed) continue;
+            counters.changed = true;
+            if (result.inserted) counters.usageEvents += 1;
+            else counters.updatedEvents += 1;
+          } else if (event.type === 'parse_error') {
+            counters.parseErrors += 1;
+          }
         }
       });
     };
 
-    const result = await readCompleteLines(filePath, startOffset, async (line, sourceOffset) => {
-      const events = parseClaudeTranscriptLine(line, parserState);
-      const observedAt = new Date().toISOString();
-      for (const event of events) {
-        if (event.type === 'session') {
-          this.store.upsertSession(event.session, filePath, observedAt);
-        } else if (event.type === 'turn') {
-          // 턴 경계는 사실이라 즉시 씁니다. 토큰은 여기 담지 않습니다.
-          this.store.upsertTurn(event);
-          turnEvents += 1;
-          changed = true;
-        } else if (event.type === 'usage') {
-          pending.push({ event, sourceOffset, observedAt });
-          if (pending.length >= FLUSH_BATCH_SIZE) flush();
-        } else if (event.type === 'parse_error') {
-          parseErrors += 1;
-        }
-      }
-    });
+    return {
+      counters,
+      push(event, sourceOffset) {
+        pending.push({ event, sourceOffset, observedAt: new Date().toISOString() });
+        if (pending.length >= FLUSH_BATCH_SIZE) flush();
+      },
+      flush,
+    };
+  }
 
-    flush();
-
-    if (result.truncated) return this.#scanFileInternal(filePath, `${reason}:truncated`);
-
+  finalizeScan(filePath, parserState, result, reason, counters) {
     this.store.saveScanState({
       provider: this.id,
       sourcePath: filePath,
@@ -220,13 +225,58 @@ export class ClaudeCollector extends UsageProviderAdapter {
     this.status.syntheticRecords += parserState.stats.syntheticRecords;
     this.status.iterationDiscrepancies += parserState.stats.iterationDiscrepancies;
     this.status.cacheWriteDiscrepancies += parserState.stats.cacheWriteDiscrepancies;
-    this.status.parseErrors += parseErrors;
+    this.status.parseErrors += counters.parseErrors;
     this.status.lastScanAt = new Date().toISOString();
     this.status.lastError = null;
-    if (changed) {
-      this.emit('updated', { provider: 'claude', filePath, reason, usageEvents, updatedEvents, turnEvents });
+    if (counters.changed) {
+      this.emit('updated', {
+        provider: 'claude',
+        filePath,
+        reason,
+        usageEvents: counters.usageEvents,
+        updatedEvents: counters.updatedEvents,
+        turnEvents: counters.turnEvents,
+      });
     }
-    return { changed, usageEvents, updatedEvents, turnEvents, parseErrors, finalOffset: result.finalOffset };
+    return { ...counters, finalOffset: result.finalOffset };
+  }
+
+  async #scanFileInternal(filePath, reason) {
+    const prepared = await this.prepareScan(filePath);
+    if (prepared.skip) return { changed: false, reason: prepared.skip };
+
+    const { parserState } = prepared;
+    const sink = this.createScanSink(filePath);
+    const result = await readCompleteLines(filePath, prepared.startOffset, (line, sourceOffset) => {
+      for (const event of parseClaudeTranscriptLine(line, parserState)) sink.push(event, sourceOffset);
+    });
+    sink.flush();
+
+    if (result.truncated) return this.#scanFileInternal(filePath, `${reason}:truncated`);
+    return this.finalizeScan(filePath, parserState, result, reason, sink.counters);
+  }
+
+  // 워커가 읽고 해석한 결과를 받아 적재합니다. 준비와 마감은 메인 스레드에
+  // 그대로 남습니다 — 커서와 턴 번호를 정하는 일은 스토어를 봐야 합니다.
+  async #scanFileWithPool(filePath, reason, pool) {
+    const prepared = await this.prepareScan(filePath);
+    if (prepared.skip) return { changed: false, reason: prepared.skip };
+
+    const { parserState } = prepared;
+    const sink = this.createScanSink(filePath);
+    const result = await pool.submit(
+      { provider: this.id, strategy: 'line', filePath, startOffset: prepared.startOffset, seed: prepared.seed },
+      (events) => {
+        for (const { event, sourceOffset } of events) sink.push(event, sourceOffset);
+      },
+    );
+    sink.flush();
+
+    // 절단이 감지되면 처음부터 다시 읽어야 합니다. 재시도는 인라인 경로로
+    // 보냅니다 — 이미 워커 한 자리를 쓰고 있어 재귀로 또 잡으면 교착입니다.
+    if (result.truncated) return this.#scanFileInternal(filePath, `${reason}:truncated`);
+    applyParserTail(parserState, result.tail);
+    return this.finalizeScan(filePath, parserState, result, reason, sink.counters);
   }
 
   async reconcile(reason = 'interval') {
@@ -288,13 +338,76 @@ export class ClaudeCollector extends UsageProviderAdapter {
     this.status.watching = this.watchers.size > 0;
   }
 
-  async start() {
-    await this.reconcile('startup');
-    if (!this.reconcileTimer) {
-      this.reconcileTimer = setInterval(() => this.reconcile('interval'), this.reconcileIntervalMs);
-      this.reconcileTimer.unref?.();
+  async start({ backfill = true } = {}) {
+    // detect 는 디렉터리 확인뿐이라 즉시 끝납니다. 전량 스캔을 미루더라도
+    // "로그가 있다"는 사실은 화면이 바로 알아야 합니다.
+    await this.detect();
+    if (backfill) {
+      await this.reconcile('startup');
+      this.startWatching();
     }
     return this.getStatus();
+  }
+
+  // 주기 reconcile 은 백필이 끝난 뒤에 켭니다. 백필 도중에 켜면 5초마다
+  // 전량 스캔이 겹쳐 서로를 밀어냅니다.
+  startWatching() {
+    if (this.reconcileTimer) return;
+    this.reconcileTimer = setInterval(() => this.reconcile('interval'), this.reconcileIntervalMs);
+    this.reconcileTimer.unref?.();
+  }
+
+  // 첫 실행의 전량 스캔. 풀이 있으면 파일별 읽기·해석을 워커로 넘기고 적재만
+  // 여기서 합니다.
+  async backfill(reason = 'startup', { pool = null, onProgress = null } = {}) {
+    await this.detect();
+    if (!this.status.detected) {
+      onProgress?.({ detected: false, filesTotal: 0, filesDone: 0 });
+      return { changed: false, files: 0 };
+    }
+
+    const files = await this.discoverFiles();
+    let changed = false;
+    let done = 0;
+    let failures = 0;
+    onProgress?.({ detected: true, filesTotal: files.length, filesDone: 0 });
+
+    const runOne = async (filePath) => {
+      try {
+        const result = pool
+          ? await this.#scanFileWithPool(filePath, reason, pool)
+          : await this.scanFile(filePath, reason);
+        changed ||= Boolean(result?.changed);
+      } catch (error) {
+        // 파일 하나가 실패해도 백필 전체를 멈추지 않습니다. 남은 파일이 훨씬
+        // 많고, 실패한 파일은 다음 주기 reconcile 이 다시 집습니다.
+        failures += 1;
+        this.status.lastError = String(error?.message ?? error);
+        this.emit('error-state', { provider: 'claude', error: this.status.lastError });
+      } finally {
+        done += 1;
+        onProgress?.({ detected: true, filesTotal: files.length, filesDone: done });
+      }
+    };
+
+    // 턴 번호는 세션 단위 상태입니다. 한 세션의 transcript 는 여러 파일로
+    // 갈라질 수 있으므로(서브에이전트, resume 사본) 같은 세션의 파일은 한
+    // 줄로 세워 순서대로 처리합니다. 세션끼리는 서로 독립이라 병렬입니다.
+    const bySession = new Map();
+    for (const filePath of files) {
+      const key = claudeSessionIdFromPath(filePath);
+      if (!bySession.has(key)) bySession.set(key, []);
+      bySession.get(key).push(filePath);
+    }
+
+    await Promise.all([...bySession.values()].map(async (group) => {
+      for (const filePath of group) await runOne(filePath);
+    }));
+
+    await this.refreshWatchers(files);
+    this.status.lastScanAt = new Date().toISOString();
+    if (!failures) this.status.lastError = null;
+    return { changed, files: files.length, failures };
   }
 
   stop() {

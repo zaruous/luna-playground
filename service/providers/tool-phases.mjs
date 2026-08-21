@@ -48,10 +48,28 @@ const TABLES = Object.freeze({
     shell_command: 'verify', exec: 'verify', run: 'verify', js: 'verify', wait: 'verify',
     local_shell_call: 'verify',
   }),
-  // Gemini(M5) / Cursor(M6) 는 어휘를 확인한 뒤 채웁니다. 빈 표라도 동작은
-  // 합니다 — 전부 'other' 로 떨어지고, 그것이 "아직 분류 근거가 없다"는
-  // 정직한 표시입니다.
-  gemini: Object.freeze({}),
+  // M5 에서 실제 로그를 세어 채웠습니다. 개발 머신 코퍼스에서 도구 이름 70종이
+  // 관측됐는데, 그중 **CLI 내장 도구만** 넣습니다. 나머지는 MCP·프로젝트 전용
+  // 이름(`mcp_*`, `API-*`, 브라우저 자동화)이라 이 표에 넣으면 남의 프로젝트
+  // 어휘를 우리 분류로 굳히게 됩니다 — 전부 'other' 로 떨어지는 것이 맞습니다.
+  gemini: Object.freeze({
+    read_file: 'explore', read_many_files: 'explore', list_directory: 'explore',
+    glob: 'explore', grep_search: 'explore', search_file_content: 'explore',
+    google_web_search: 'explore', web_fetch: 'explore',
+
+    write_file: 'implement', replace: 'implement',
+
+    // Claude 의 Bash·Codex 의 shell_command 와 같은 자리입니다.
+    run_shell_command: 'verify',
+
+    write_todos: 'plan', enter_plan_mode: 'plan', exit_plan_mode: 'plan',
+
+    ask_user: 'clarify',
+
+    delegate_to_agent: 'delegate', codebase_investigator: 'delegate',
+  }),
+  // Cursor(M6) 는 어휘를 확인한 뒤 채웁니다. 빈 표라도 동작은 합니다 — 전부
+  // 'other' 로 떨어지고, 그것이 "아직 분류 근거가 없다"는 정직한 표시입니다.
   cursor: Object.freeze({}),
 });
 

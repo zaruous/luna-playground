@@ -85,23 +85,32 @@ Exit criterion: no personal Cursor estimate is presented as exact server billing
 
 ## Phase 4 — Gemini CLI Adapter
 
-Gemini CLI local sessions already expose useful usage categories, making it a good fit for the normalized schema.
+Status: implemented in the current branch.
 
-Planned mapping:
+### Completed
 
-- input -> `input_tokens`
-- cached -> `cached_input_tokens`
-- output -> `output_tokens`
-- thoughts -> `reasoning_tokens`
-- tool -> `tool_tokens`
-- total -> `total_tokens`
+- Discover `${GEMINI_DATA_DIR:-~/.gemini}/tmp/<project_dir>/chats/` in both real formats: `.json` whole-document snapshots and `.jsonl` incremental logs (header line, message lines, `$set` patch lines). `endsWith('.json')` does not match `.jsonl`, so the two extensions are listed explicitly.
+- Resume `.jsonl` from a byte offset like the other file-based providers; for `.json`, decide re-parsing by mtime plus size and then by content hash, so a rewrite with unchanged content skips parsing entirely.
+- Map input / cached / output / thoughts / tool / total onto the common model, keeping Gemini's own accounting distinct from both Codex and Claude.
+- Deduplicate globally on `gemini|<message.id>` with request-scoped upsert, because the same message id reappears across files and lines (measured: 298 in `.json`, 636 in `.jsonl` — resumed-session copies).
+- Attribute turns to human messages (`type: 'user'`), leaving usage before the first boundary in the unattributed bucket.
+- Record tool names from `toolCalls[].name` and fill the Gemini tool/phase table with CLI built-ins only; MCP and project-specific names fall through to `other`.
+- Resolve project directories through `~/.gemini/projects.json`, and keep unresolvable hashes distinct instead of collapsing them into one bucket.
 
-Planned work:
+### Measured accounting — two findings that contradicted the plan
 
-- scan `~/.gemini/tmp/<project_hash>/chats/`;
-- recover project attribution from Gemini session metadata/project hashing;
-- add incremental file scanning and reconciliation;
-- add provider/server anchors only where an official source is available.
+Across the whole development-machine corpus (`.json` 419 files / 11,796 token-bearing messages, `.jsonl` 386 files / 1,519), `input + output + thoughts == total` holds with zero mismatches, and `cached <= input` always holds.
+
+- `thoughts` sits **outside** `output`. Codex and Claude both satisfy `output ⊇ reasoning`, so a non-overlapping breakdown subtracts reasoning from output; doing that for Gemini understates output and the parts no longer sum to the total.
+- `cached` sits **inside** `input`, so the accounting is `cache_in_input` like Codex — not the `cache_disjoint` the plan predicted from the guide's wording. The logs decided it.
+
+### Known limits
+
+- `tool` is zero across the entire corpus, so whether it belongs inside `total` is unverified. The value is stored as reported and its position is not assumed; a non-zero `tool` breaks the identity above and surfaces as a `partial` grade plus a mismatch counter rather than a silent correction.
+- Of 110 hashed project directories, only 2 reverse-map to a known path via sha256, so hashed directories are treated as generally unresolvable. They keep a `gemini:<12 hex>` identifier so distinct projects stay distinct.
+- No compaction marker was found in either format, so turn rows never claim compaction.
+- Gemini CLI's hook contract is unverified, so `capabilities.hooks` is false rather than offering a button that cannot be wired.
+- Local sessions carry no server quota, so `serverQuota` is false and there is nothing to reconcile against.
 
 ## Cross-provider follow-up
 

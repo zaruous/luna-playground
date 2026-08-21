@@ -106,7 +106,7 @@ capabilities: {
 |---|---|---|---|---|
 | Codex | `event_msg.payload.type === 'user_message'` | `response_item.payload.name` (`function_call` / `custom_tool_call` / `local_shell_call` / `tool_search_call`) | `event_msg/context_compacted`, `compacted` 레코드 | 구현 |
 | Claude | `type:'user'` 이고 `toolUseResult` 없고 text 블록 있음 | `message.content[].tool_use.name` | `type:'system'`, `subtype:'compact_boundary'` | 구현 |
-| Gemini | **M5에서 확인** — 세션 JSON의 대화 항목 경계로 추정 | 미확인 | 미확인 | 예정 |
+| Gemini | `type:'user'` 메시지 (`.json` 의 `messages[]` / `.jsonl` 의 메시지 줄 · `$set.messages` 포함) | `toolCalls[].name` | **없음** — 두 포맷 어디에도 마커가 없어 `compacted` 는 항상 false | 구현 ([gemini/formats.md](./gemini/formats.md)) |
 | Cursor | **불가** — Admin API는 이벤트 단위 집계만 주고 대화 구조가 없음 | 없음 | 없음 | `turnLedger: false` |
 
 ### 도구 → 단계 매핑은 어댑터 어휘로
@@ -266,28 +266,61 @@ eventKey = `cursor|${timestamp}|${userEmail}|${model}|${conversationId ?? ''}|${
 
 ### 5.4 Gemini CLI
 
+M5에서 구현했습니다. 처리 사항 전체는 [gemini/](./gemini/README.md) 에 있고 —
+[실측](./gemini/measurements.md) · [포맷과 커서 규칙](./gemini/formats.md) ·
+[설계 결정](./gemini/decisions.md) — 아래는 그 요약입니다. **예측이 아니라 실측**입니다. 개발 머신 코퍼스
+(`.json` 419파일 / 토큰 실린 메시지 11,796건 + `.jsonl` 386파일 / 1,519건)를
+전수로 재서 확정했습니다. 예측과 어긋난 항목은 표에 함께 적어 둡니다 — 다음에
+읽는 사람이 같은 예측을 다시 하지 않도록.
+
 | 항목 | 값 |
 |---|---|
-| 원본 | `${GEMINI_DATA_DIR:-~/.gemini/tmp}/<project_hash>/chats/*.json`, `*.jsonl` |
-| 토큰 필드 | input / output / cached / thought / tool / total (제공될 때) |
-| 증분 방식 | 파일 tail. `.json`(전체 스냅샷) 파일은 tail이 불가하므로 **파일 mtime + 내용 해시**로 재파싱 판정 |
-| 프로젝트 귀속 | `<project_hash>`는 프로젝트 루트 경로 해시 → 역매핑 불가. 세션 메타데이터의 경로를 우선 사용하고, 없으면 해시를 그대로 표시 |
-| 세션 식별 | 세션 UUID |
+| 원본 | `${GEMINI_DATA_DIR:-~/.gemini/tmp}/<project_dir>/chats/*.json`, `*.jsonl` |
+| 토큰 필드 | input / output / cached / thoughts / tool / total — 여섯 개가 **항상** 채워져 옵니다(누락 0건) |
+| 포맷 | **둘**입니다. `.json` 은 문서 전체 스냅샷, `.jsonl` 은 헤더 + 메시지 + `$set` 패치가 뒤에만 붙는 증분 로그. `endsWith('.json')` 은 `.jsonl` 을 잡지 않습니다 |
+| 증분 방식 | `.jsonl` 은 다른 provider 와 같은 바이트 tail. `.json` 은 tail이 불가하므로 mtime + 크기로 1차, **내용 해시**로 2차 판정(내용이 같은 재작성이면 파싱을 건너뜁니다) |
+| 프로젝트 귀속 | 디렉터리 이름이 두 형태입니다. **읽을 수 있는 슬러그**(76개 중 73개가 `~/.gemini/projects.json` 로 실제 경로까지 풀림, 중복 슬러그 0건)와 **64자 해시**(110개 중 sha256 역매핑이 맞는 것은 2개뿐 → 사실상 역매핑 불가). 못 풀리면 `unknown-project` 로 합치지 않고 `gemini:<해시 12자>` 를 식별자로 씁니다 — 합치면 서로 다른 프로젝트 81개가 한 줄이 됩니다 |
+| 세션 식별 | 세션 UUID (`.json` 최상위 / `.jsonl` 헤더 줄) |
 | 한도 | 로컬에 없음 → `serverQuota = false` |
-| 품질 | `local_exact` (단, 포맷이 진화 중이라 파서 버전 기록) |
-| 턴 경계 | **M5에서 확인 필요** — 세션 JSON의 대화 항목 경계로 추정. 확인 못 하면 `turnLedger = false` |
-| 도구 이름 | 미확인. `tool` 토큰 필드가 있으니 도구 호출 기록도 있을 가능성이 높습니다 |
+| 품질 | `local_exact`. 아래 항등식이 깨진 이벤트만 `partial` 로 내리고 값은 보정하지 않습니다 |
+| 턴 경계 | **확인됨** — 사람 메시지(`type: 'user'`)가 경계입니다. 경계 앞의 사용량은 0번(경계 미확인) 버킷에 남습니다. 컴팩션 표시는 로그에서 찾지 못해 `compacted` 는 항상 false 입니다 |
+| 도구 이름 | **확인됨** — gemini 메시지의 `toolCalls[].name`. 코퍼스에서 70종이 관측됐고 CLI 내장 도구만 단계 표에 넣었습니다(나머지는 MCP·프로젝트 전용이라 `other`) |
+| 중복 제거 | `gemini|<message.id>` 로 요청 단위 upsert. 같은 id 가 여러 파일·줄에 다시 나타납니다(`.json` 298건 / `.jsonl` 636건 — resume 사본) |
+
+**토큰 회계 — 예측과 반대였던 두 가지**
+
+전수에서 `input + output + thoughts === total` 이 성립하고 `cached <= input` 입니다
+(불일치 0건). 여기서 두 가지가 나옵니다.
+
+1. **`thoughts` 는 `output` 밖에 있습니다.** Codex·Claude 는 `output ⊇ reasoning`
+   이라 겹치지 않게 그릴 때 output 에서 reasoning 을 빼야 하는데, Gemini 는
+   빼면 안 됩니다 — 빼면 출력 조각이 실제보다 작아지고 조각 합이 total 에
+   못 미칩니다. `src/shared.js` 의 `decomposeTokens` 에 이 항등식을 위한 세 번째
+   분기가 있습니다.
+2. **`cached` 는 `input` 안에 있습니다.** 따라서 회계는 `cache_disjoint` 가 아니라
+   Codex 와 같은 **`cache_in_input`** 입니다. 이 문서의 이전 판은 가이드 문구를
+   근거로 "input에서 분리(R4)"라고 적었지만 로그가 반대였습니다.
+
+`tool` 은 코퍼스 전체에서 0 이라 total 안인지 밖인지 확인할 수 없었습니다.
+그래서 자리를 **가정하지 않고** 값만 그대로 싣습니다. 0 이 아닌 tool 이 나타나면
+위 항등식이 깨지고, 그때는 보정 대신 `partial` 등급과 불일치 카운터로 드러납니다.
 
 매핑:
 
 | Gemini 필드 | 공용 필드 |
 |---|---|
-| input | `inputTokens` |
-| cached | `cachedInputTokens` (input에서 **분리**, R4) |
-| output | `outputTokens` |
-| thought | `reasoningTokens` |
-| tool | `toolTokens` (신규) |
+| input | `inputTokens` (캐시 읽기 **포함**) |
+| cached | `cachedInputTokens` (input 안쪽 — 프롬프트 분모에 다시 더하지 않음) |
+| output | `outputTokens` (추론 **불포함**) |
+| thoughts | `reasoningTokens` |
+| tool | `toolTokens` — 예약 필드의 첫 실사용자. total 안의 자리는 미확인 |
 | total | `totalTokens` |
+
+읽지 않는 것: 메시지 `content` / `displayContent` / `thoughts` 본문 / `summary`,
+`toolCalls` 의 `args`·`result`·`resultDisplay`·`description`, 그리고 같은
+디렉터리의 `logs.json`(사용자 프롬프트 원문)과 홈의 `oauth_creds.json`.
+도구 인자에서는 경로 키(`file_path` / `absolute_path` / `dir_path` / `path`)만
+보고, 저장하는 것은 경로 전체가 아니라 마지막 두 조각입니다.
 
 `.json` 전체 스냅샷 파일을 다루기 위해 파일 기반 커서에 필드를 하나 더 씁니다.
 

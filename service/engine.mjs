@@ -3,11 +3,31 @@ import { EventEmitter } from 'node:events';
 import { UsageStore } from './store.mjs';
 import { CodexCollector } from './providers/codex/collector.mjs';
 import { ClaudeCollector } from './providers/claude/collector.mjs';
+import { GeminiCollector } from './providers/gemini/collector.mjs';
 import { UsageProviderRegistry } from './providers/contracts.mjs';
 import { HookServer } from './hook-server.mjs';
+import { ScanPool } from './scan-pool.mjs';
 // 회계 표는 한 곳에만 둡니다 — 어댑터 capabilities·스토어 쿼리·이 집계가 같은
 // 값을 봐야 합니다(service/providers/accounting.mjs).
 import { accountingOf, promptSideTokens } from './providers/accounting.mjs';
+
+// snapshot() 은 집계 쿼리 묶음입니다. 백필 중에 파일마다 부르면 스냅샷 쪽이
+// 스캔보다 비싸지므로, 진행 알림은 시간으로 조입니다.
+const WARMUP_EMIT_INTERVAL_MS = 1000;
+
+function emptyWarmupState() {
+  return {
+    // idle: 아직 시작 안 함 / scanning: 전량 스캔 중 / ready: 끝 / failed: 실패
+    phase: 'idle',
+    startedAt: null,
+    finishedAt: null,
+    workers: 0,
+    filesTotal: 0,
+    filesDone: 0,
+    providers: {},
+    error: null,
+  };
+}
 
 function startOfLocalMonthIso() {
   const now = new Date();
@@ -54,7 +74,7 @@ function flattenQuotaWindows(rateLimits) {
 }
 
 export class UsageEngine extends EventEmitter {
-  constructor({ userDataPath, codexHome, claudeHomes } = {}) {
+  constructor({ userDataPath, codexHome, claudeHomes, geminiHomes } = {}) {
     super();
     this.store = new UsageStore(path.join(userDataPath, 'usage.sqlite3'));
     this.codex = new CodexCollector({ store: this.store, codexHome });
@@ -62,9 +82,17 @@ export class UsageEngine extends EventEmitter {
       store: this.store,
       ...(claudeHomes ? { claudeHomes } : {}),
     });
-    this.providerRegistry = new UsageProviderRegistry({ adapters: [this.codex, this.claude] });
+    this.gemini = new GeminiCollector({
+      store: this.store,
+      ...(geminiHomes ? { geminiHomes } : {}),
+    });
+    this.providerRegistry = new UsageProviderRegistry({ adapters: [this.codex, this.claude, this.gemini] });
     this.hookServer = new HookServer({ onSignal: (payload) => this.routeHookSignal(payload) });
     this.started = false;
+    this.warmup = emptyWarmupState();
+    this.warmupTask = null;
+    this.warmupPool = null;
+    this.lastWarmupEmitAt = 0;
     this.lastHookAt = new Map();
     this.providerRegistry.on('updated', (event) => this.#emitUpdate(event));
     this.providerRegistry.on('hook', (event) => {
@@ -99,19 +127,108 @@ export class UsageEngine extends EventEmitter {
     }
   }
 
-  async start() {
+  // warmup: 'blocking' 이면 전량 스캔이 끝난 뒤에 돌아옵니다(테스트·CLI 기본).
+  // 'background' 면 감지까지만 하고 즉시 돌아오며, 전량 스캔은 워커 풀에서
+  // 이어집니다 — 서버가 화면을 먼저 띄우기 위한 경로입니다.
+  async start({ warmup = 'blocking' } = {}) {
     if (this.started) return this.snapshot();
     await this.hookServer.start();
+    if (warmup === 'background') {
+      await this.providerRegistry.startAll({ backfill: false });
+      this.started = true;
+      this.warmupTask = this.#runWarmup();
+      return this.snapshot();
+    }
     await this.providerRegistry.startAll();
     this.started = true;
+    this.warmup = {
+      ...emptyWarmupState(),
+      phase: 'ready',
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+    };
     return this.snapshot();
   }
 
   async stop() {
+    // 풀을 먼저 닫습니다. 진행 중인 백필은 submit 이 실패하며 파일 단위로
+    // 정리되고, 그래서 스토어를 닫기 전에 적재가 모두 멈춥니다.
+    await this.warmupPool?.close().catch(() => {});
     this.providerRegistry.stopAll();
     await this.hookServer.stop();
+    await this.warmupTask?.catch(() => {});
     this.store.close();
     this.started = false;
+  }
+
+  async #runWarmup() {
+    const pool = new ScanPool();
+    this.warmupPool = pool;
+    this.warmup = {
+      ...emptyWarmupState(),
+      phase: 'scanning',
+      startedAt: new Date().toISOString(),
+      workers: pool.size,
+    };
+    this.#emitWarmup(true);
+
+    try {
+      // provider 끼리는 서로 독립이라 같이 돌립니다. 실제 동시 실행 수는 풀이
+      // 잡아 줍니다. 한쪽이 실패해도 다른 쪽은 계속 채웁니다.
+      await Promise.all(this.providerRegistry.list().map(async (adapter) => {
+        try {
+          await adapter.backfill('startup', {
+            pool,
+            onProgress: (progress) => this.#onWarmupProgress(adapter.id, progress),
+          });
+        } catch (error) {
+          this.warmup.providers[adapter.id] = {
+            ...(this.warmup.providers[adapter.id] ?? { detected: true, filesTotal: 0, filesDone: 0 }),
+            error: String(error?.message ?? error),
+          };
+        }
+      }));
+      this.warmup.phase = 'ready';
+    } catch (error) {
+      this.warmup.phase = 'failed';
+      this.warmup.error = String(error?.message ?? error);
+    } finally {
+      this.warmup.finishedAt = new Date().toISOString();
+      this.warmupPool = null;
+      await pool.close().catch(() => {});
+      // 주기 reconcile 은 이제야 켭니다 — 백필과 겹치면 서로를 밀어냅니다.
+      for (const adapter of this.providerRegistry.list()) adapter.startWatching?.();
+      this.#emitWarmup(true);
+    }
+  }
+
+  #onWarmupProgress(providerId, progress = {}) {
+    this.warmup.providers[providerId] = {
+      ...(this.warmup.providers[providerId] ?? {}),
+      detected: Boolean(progress.detected),
+      filesTotal: Number(progress.filesTotal) || 0,
+      filesDone: Number(progress.filesDone) || 0,
+    };
+    let filesTotal = 0;
+    let filesDone = 0;
+    for (const entry of Object.values(this.warmup.providers)) {
+      filesTotal += Number(entry.filesTotal) || 0;
+      filesDone += Number(entry.filesDone) || 0;
+    }
+    this.warmup.filesTotal = filesTotal;
+    this.warmup.filesDone = filesDone;
+    this.#emitWarmup(false);
+  }
+
+  #emitWarmup(force) {
+    const now = Date.now();
+    if (!force && now - this.lastWarmupEmitAt < WARMUP_EMIT_INTERVAL_MS) return;
+    this.lastWarmupEmitAt = now;
+    this.emit('snapshot', this.snapshot(), { type: 'warmup' });
+  }
+
+  warmupState() {
+    return { ...this.warmup, providers: { ...this.warmup.providers } };
   }
 
   async rescan() {
@@ -160,10 +277,19 @@ export class UsageEngine extends EventEmitter {
       providers,
       projects: this.store.getRecentProjectsAcrossProviders(6, since),
       diagnostics: this.store.getDiagnostics(),
+      // 전량 스캔이 끝나기 전의 합계는 **부분값**입니다. 화면이 이걸 확정값
+      // 처럼 보이게 하면 안 되므로 진행 상태를 스냅샷에 같이 싣습니다.
+      warmup: this.warmupState(),
     };
   }
 
   #emitUpdate(event) {
+    // 백필 중에는 파일마다 스냅샷을 만들면 집계 쿼리가 스캔을 압도합니다.
+    // 진행 상황은 warmup 경로가 이미 주기적으로 내보냅니다.
+    if (this.warmup.phase === 'scanning') {
+      this.#emitWarmup(false);
+      return;
+    }
     const snapshot = this.snapshot();
     this.emit('snapshot', snapshot, event);
   }

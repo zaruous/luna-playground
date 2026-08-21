@@ -1,8 +1,8 @@
 # NyangTracker 개발 계획 (docs/dev)
 
-현재 코드에는 **Codex와 Claude Code 어댑터**가 구현돼 있고(계획한 4종 중 둘 — Gemini는 M5, Cursor는 M6), 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다.
+현재 코드에는 **Codex · Claude Code · Gemini CLI 어댑터**가 구현돼 있고(계획한 4종 중 셋 — Cursor는 M6), 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다.
 
-이 디렉터리는 그 다음 단계를 다룹니다. `docs/` 상위 문서가 **현재 구현된 것**을 기술하는 반면, `docs/dev/`는 **아직 구현하지 않은 것**을 기술합니다 — 다만 완료된 마일스톤(M1~M3 · M8 · M9)은 문서에 완료 표시를 남겨 무엇이 실제로 들어갔는지 되짚을 수 있게 합니다. M4는 동기화 절반만 들어갔고 완료 기준 하나가 미달이라 "완료"로 적지 않습니다.
+이 디렉터리는 그 다음 단계를 다룹니다. `docs/` 상위 문서가 **현재 구현된 것**을 기술하는 반면, `docs/dev/`는 **아직 구현하지 않은 것**을 기술합니다 — 다만 완료된 마일스톤(M1~M3 · M5 · M8 · M9)은 문서에 완료 표시를 남겨 무엇이 실제로 들어갔는지 되짚을 수 있게 합니다. M4는 동기화 절반만 들어갔고 완료 기준 하나가 미달이라 "완료"로 적지 않습니다.
 
 ## 문서 지도
 
@@ -10,7 +10,8 @@
 |---|---|
 | [implementation-plan.md](./implementation-plan.md) | 마일스톤 M1~M9, 의존 순서, 단계별 완료 기준, 라이브러리 채택 검토 |
 | [token-measurement-survey.md](./token-measurement-survey.md) | GitHub 오픈소스 트래커들의 토큰 측정 알고리즘 분석과 그로부터 도출한 설계 규칙 |
-| [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude 구현 완료) |
+| [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude·Gemini 구현 완료) |
+| [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) 처리 사항 — 실측, 포맷 두 개와 커서 규칙, 설계 결정 |
 | [store-extensions.md](./store-extensions.md) | 위 설계를 받기 위한 SQLite 스키마·쿼리 확장 (§1·§8 구현 완료) |
 
 ## 메뉴별 구현 문서

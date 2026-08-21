@@ -10,10 +10,12 @@ export const providerCatalog = [
   { id: 'codex', name: 'Codex', short: 'C', tone: 'violet', status: '연동됨' },
   { id: 'claude', name: 'Claude', short: 'Cl', tone: 'orange', status: '연동됨' },
   { id: 'cursor', name: 'Cursor', short: 'Cu', tone: 'blue', status: '준비 중' },
-  { id: 'gemini', name: 'Gemini', short: 'G', tone: 'mint', status: '준비 중' },
+  { id: 'gemini', name: 'Gemini', short: 'G', tone: 'mint', status: '연동됨' },
 ];
 
-export const providerMilestones = { gemini: 'M5', cursor: 'M6' };
+// 어댑터가 아직 없는 provider 만 남습니다. Gemini 는 M5 에서 붙었으므로 여기서
+// 빠집니다 — 남겨 두면 연동된 provider 에 "준비 중" 이 붙습니다.
+export const providerMilestones = { cursor: 'M6' };
 
 export function formatTokens(value = 0) {
   const number = Number(value) || 0;
@@ -28,6 +30,74 @@ export function formatPercent(value, digits = 0) {
   // 그러면 "아직 못 잰 값"이 자신만만한 0% 로 찍힙니다(R7).
   if (value === null || !Number.isFinite(Number(value))) return '—';
   return `${Number(value).toFixed(digits)}%`;
+}
+
+export const PENDING_LABEL = '로딩중..';
+
+// 숫자 자리에는 세 가지 서로 다른 사실이 옵니다.
+//   1) 아직 서버에서 값이 안 왔다        → '로딩중..'
+//   2) 관측한 적이 없다                  → '—'
+//   3) 관측했고 그 값이 0 이다           → '0'
+// 셋을 같은 글자로 적으면 화면이 없는 사실을 말합니다. 특히 첫 스캔 중의 1) 을
+// 3) 으로 적는 것이 가장 나쁩니다 — "이번 달 0 토큰" 은 사용자가 바로 자기
+// 사용량으로 읽는 문장이기 때문입니다(R7).
+export function measurementPending(snapshot) {
+  if (!snapshot) return true;
+  // 스캔이 끝났으면 0 은 진짜 0 입니다. 더 이상 기다릴 값이 없습니다.
+  if (snapshot.warmup?.phase !== 'scanning') return false;
+  // 스캔 중이라도 이미 들어온 값이 있으면 그건 부분값이지 미도착이 아닙니다.
+  // 부분값이라는 사실은 상단 띠가 따로 말합니다.
+  return (Number(snapshot.totals?.eventCount) || 0) === 0;
+}
+
+export function tokensText(value, pending = false) {
+  return pending ? PENDING_LABEL : formatTokens(value);
+}
+
+export function percentText(value, pending = false, digits = 0) {
+  return pending ? PENDING_LABEL : formatPercent(value, digits);
+}
+
+// 관측값이 없을 때 '—' 로 떨어지는 자리용. 스캔 중이면 '—' 대신 로딩 표시입니다.
+export function tokensOrDash(value, pending = false) {
+  if (pending) return PENDING_LABEL;
+  return Number(value) ? formatTokens(value) : '—';
+}
+
+// provider 행의 상태 문구. "값이 0" 은 여러 가지 서로 다른 사실일 수 있고,
+// 그것들을 한 문구로 합치면 화면이 없는 사실을 말합니다(R7).
+//
+//   1) 첫 스캔이 아직 이 provider 에 닿지 않았다   → 측정값 대기
+//   2) 이 기간 관측이 있고 등급도 있다              → 품질 배지
+//   3) 이 기간 관측이 있지만 등급이 없다            → 등급 없음
+//   4) 관측한 적은 있는데 이 기간 활동이 없다       → 이번 달 기록 없음 (+ 전체 기간)
+//   5) 한 번도 관측된 적이 없다                     → 관측 대기
+//   6) 어댑터 자체가 없다                           → 카탈로그 상태(준비 중)
+//
+// 4) 가 없으면 원장에 수억 토큰이 있는 provider 에게 "관측 대기" 라고 말하게
+// 됩니다 — Gemini 어댑터를 붙이고 실제로 그랬습니다.
+// 3) 이 없으면 그 반대로, 값이 멀쩡히 찍혀 있는 행에 "관측 대기" 를 적게
+// 됩니다 — 대시보드에 기간 칩을 붙이고 실제로 그랬습니다. 품질 등급은 이번 달
+// 창으로만 계산되므로 다른 기간에서는 등급이 아예 없습니다.
+export function providerActivityLabel({
+  pending = false,
+  badgeLabel = null,
+  periodTokens = 0,
+  allTimeTokens = 0,
+  measurement = null,
+  status = null,
+  gradeUnavailable = false,
+} = {}) {
+  // 숫자 자리는 PENDING_LABEL('로딩중..')을 쓰지만, 이 자리는 상태 문구라
+  // 무엇을 기다리는지 적습니다.
+  if (pending) return '측정값 대기';
+  if (badgeLabel) return badgeLabel;
+  if (gradeUnavailable && Number(periodTokens) > 0) return '등급 없음';
+  if (!Number(periodTokens) && Number(allTimeTokens) > 0) {
+    return `이번 달 기록 없음 · 전체 ${formatTokens(allTimeTokens)}`;
+  }
+  if (measurement) return '관측 대기';
+  return status ?? '관측 대기';
 }
 
 // 분모는 반드시 totals.promptTokens 입니다 — 엔진이 provider 회계에 맞춰 미리
@@ -89,8 +159,8 @@ export function providerQuotaWindows(provider) {
 }
 
 // 서버 한도는 세 가지가 아니라 네 가지 상태입니다. capabilities 가 null 인
-// provider(어댑터가 아직 없는 cursor·gemini)는 "한도가 없다"가 아니라 "아직
-// 모른다" 입니다 — !provider.capabilities?.serverQuota 한 줄로 합치면 한 번도
+// provider(어댑터가 아직 없는 cursor)는 "한도가 없다"가 아니라 "아직 모른다"
+// 입니다 — !provider.capabilities?.serverQuota 한 줄로 합치면 한 번도
 // 관측한 적 없는 provider 에 '한도 미제공' 이라는 사실을 지어내게 됩니다(R7).
 // reconciliation.status 로는 구분할 수 없습니다: snapshot 이 아직 없는 Codex 와
 // 서버 원장 자체가 없는 Claude 가 둘 다 NO_SERVER_DATA 입니다(service/engine.mjs).
@@ -256,6 +326,33 @@ export function decomposeTokens(tokens = {}) {
       extras: cacheWrite > 0
         ? [{ key: 'cacheWriteInputTokens', label: '캐시 쓰기', tone: 'tk-cachew', value: cacheWrite, note: '합계 외' }]
         : [],
+    };
+  }
+
+  // 추론이 출력 **밖**에 있는 회계(Gemini). 위 분기와 달리 output 에서
+  // reasoning 을 빼면 안 됩니다 — 빼면 출력 조각이 실제보다 작아지고 합이
+  // total 에 못 미칩니다. Codex 와 같은 cache_in_input 이라 캐시 읽기는
+  // input 안쪽입니다(service/providers/gemini/parser.mjs 상단의 실측 근거).
+  //
+  // tool 을 이 항등식에 넣지 않는 이유: 실측 코퍼스에서 tool 이 전부 0 이어서
+  // total 안인지 밖인지 확인할 수 없었습니다. 0 이 아닌 tool 이 나타나면 이
+  // 분기가 안 맞고 아래 fallback 으로 떨어져 '겹침 미확인' 이 붙습니다 —
+  // 모르는 것을 아는 척하지 않는 쪽이 맞습니다.
+  // cacheWrite === 0 을 조건에 넣는 이유: Gemini 로그에는 캐시 쓰기 필드가
+  // 아예 없어 항상 0 입니다. 이 조건이 없으면 캐시 쓰기가 있는 Claude 기록이
+  // 우연히 이 항등식을 만족할 때 엉뚱한 분해가 먼저 잡힙니다.
+  if (total > 0 && cacheWrite === 0 && reasoning > 0 && input >= cached
+      && input + output + reasoning === total) {
+    return {
+      nested: true,
+      sum: total,
+      segments: [
+        { key: 'cachedInputTokens', label: '캐시 읽기', tone: 'tk-cached', value: cached },
+        { key: 'inputTokens', label: '비캐시 입력', tone: 'tk-input', value: input - cached },
+        { key: 'outputTokens', label: '출력', tone: 'tk-output', value: output },
+        { key: 'reasoningTokens', label: '추론', tone: 'tk-reason', value: reasoning },
+      ],
+      extras: [],
     };
   }
 

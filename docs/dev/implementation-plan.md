@@ -1,6 +1,6 @@
 # 구현 플랜
 
-현재 위치: Codex 어댑터 1종 + 대시보드 1화면. 목표: 메뉴 6종 완성 + provider 4종(Codex/Claude/Cursor/Gemini).
+현재 위치: 어댑터 3종(Codex / Claude Code / Gemini CLI) + 화면 6종 중 5종. 목표: 메뉴 6종 완성 + provider 4종(Codex/Claude/Cursor/Gemini). 남은 것은 알림 화면(M4 후반), Cursor 어댑터(M6), 비용·내보내기(M7)입니다.
 
 순서를 정한 근거는 두 가지입니다. **(1) 화면 골격이 먼저 있어야** provider를 추가할 때 표시할 곳이 생깁니다. **(2) 같은 수집 방식끼리 묶어야** 인프라를 재사용합니다 — Claude·Gemini는 Codex와 같은 "로컬 파일 tail"이고, Cursor만 "인증된 서버 API"라 새 인프라(자격증명 저장, 레이트리밋, 시간 창 커서)를 요구하므로 마지막입니다.
 
@@ -13,7 +13,7 @@ M3 Claude 어댑터 ─────────> M5 Gemini 어댑터 ───�
                                                       └─> M7 비용·내보내기
 ```
 
-M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 병행 가능했습니다(수집 계층만 건드림). M1~M3는 완료 상태입니다.
+M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 병행 가능했습니다(수집 계층만 건드림). 완료: M1 · M2 · M3 · M5 · M8 · M9. M4는 동기화 절반만 들어갔고 알림은 미구현입니다.
 
 ---
 
@@ -162,23 +162,35 @@ M1은 모든 화면 작업의 선행 조건이고, M3는 M1과 독립적으로 �
 
 ---
 
-## M5 — Gemini CLI 어댑터
+## M5 — Gemini CLI 어댑터 — 완료
 
 문서: [provider-token-api.md §5.4](./provider-token-api.md)
+
+이 마일스톤에서 배운 것은 **계획서에 적힌 예측을 로그로 검증해야 한다**는 것이었습니다. 산출물 목록의 "cached 분리"는 실측에서 반대였고, 조사 단계에서 포맷 하나(`.jsonl` 386파일)를 아예 놓치고 있었습니다 — `endsWith('.json')`이 `.jsonl`을 잡지 않기 때문입니다.
 
 **산출물**
 
 - `service/providers/gemini/{detector,parser,collector}.mjs`
-- `usage_events.tool_tokens` 컬럼 활성화 — 예약 필드였던 `tool_tokens`의 첫 실사용자
-- `provider_scan_state`에 `content_hash`, `parser_version` — `.json` 전체 스냅샷 파일 대응
-- `cached` → `cachedInputTokens` 분리 (input과 이중 계상 금지)
-- `<project_hash>` 역매핑 실패 시 표시 정책
+- `usage_events.tool_tokens` 활성화 — 예약 필드였던 `tool_tokens`의 첫 실사용자
+- `provider_scan_state.content_hash` 활성화 — `.json` 전체 스냅샷 대응. 내용이 같은 재작성이면 JSON.parse 자체를 건너뜁니다(이 포맷에서 가장 비싼 단계)
+- `service/scan-worker.mjs`의 전략 디스패치를 `provider:strategy`로 확장 — 한 provider 안에 tail(`.jsonl`)과 스냅샷(`.json`)이 섞여 있어 provider 단위로는 갈 수 없습니다
+- `tool-phases.mjs`의 gemini 표 — 관측된 70종 중 CLI 내장 도구만
+- `<project_dir>` 해석 정책: `projects.json` 색인 → 경로, 실패 시 슬러그, 해시는 `gemini:<12자>`
 
-**완료 기준**
+**예측이 틀렸던 두 곳(수정함)**
 
-- thought 토큰이 `reasoningTokens`로, tool 토큰이 `toolTokens`로 들어간다
-- 같은 `.json`을 두 번 스캔해도 합계가 늘지 않는다
-- Gemini 로그 포맷이 바뀌었을 때 `parser_version`으로 재해석 대상을 고를 수 있다
+- `accounting.mjs`의 `gemini: 'cache_disjoint'` → **`cache_in_input`**. 전수에서 `cached <= input`이고 total에 cached가 따로 더해지지 않습니다
+- `decomposeTokens`에 세 번째 분기 추가. `thoughts`가 `output` **밖**이라 기존 두 분기 어디에도 안 맞아 "겹침 미확인"으로 떨어지고 있었습니다
+
+**하지 않은 것**: 값이 0인 `tool`의 total 내 위치를 추정하기, 항등식이 깨진 레코드를 보정해서 맞추기, 해시 디렉터리를 `unknown-project`로 합치기(서로 다른 프로젝트 81개가 한 줄이 됩니다), 컴팩션 경계를 있는 것처럼 표시하기.
+
+**완료 기준 달성**
+
+- thought 토큰이 `reasoningTokens`로, tool 토큰이 `toolTokens`로 들어갑니다 — `test/gemini-parser.test.mjs`
+- 같은 파일을 두 번, 그리고 커서를 지운 전량 재해석까지 세 경로로 스캔해도 합계와 턴 수가 늘지 않습니다 — `test/gemini-collector.test.mjs`
+- `parser_version`으로 재해석 대상을 고를 수 있습니다(Codex·Claude와 같은 규칙 + 원장 상태 OR)
+- 실제 코퍼스 805파일에서 항등식 불일치 0건 · `cached > input` 0건 · 파싱 오류 0건, 분해 조각 합이 total과 정확히 일치(987,546,843)
+- 프롬프트·응답·사고 본문·도구 입출력이 SQLite 바이트와 스냅샷에 없습니다 — `test/gemini-collector.test.mjs`의 센티넬 검사
 
 ---
 

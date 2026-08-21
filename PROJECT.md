@@ -2,7 +2,11 @@
 
 NyangTracker is a cat-themed local web app for observing local AI coding usage. A Node service collects usage on the machine and a React client reads it over an authenticated loopback HTTP/SSE API.
 
-## Current scope: Codex Adapter v1
+## Current scope: Codex, Claude Code and Gemini CLI adapters
+
+The Codex adapter below is the reference implementation. Claude Code and Gemini CLI reuse the same engine, store and scan pipeline; what differs per provider is the token accounting and the cursor rule, both of which are established by measuring real logs rather than by reading a guide (see `docs/dev/provider-token-api.md`).
+
+### Codex adapter
 
 - Scans `~/.codex/sessions/**/*.jsonl` and archived sessions.
 - Reads Codex session metadata such as cwd, model and session identity.

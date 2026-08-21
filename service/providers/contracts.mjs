@@ -40,6 +40,14 @@ export class UsageProviderAdapter extends EventEmitter {
 
   stop() {}
 
+  // 전량 스캔(백필)과 주기 감시를 따로 켤 수 있게 열어 둡니다. 서버는 화면을
+  // 먼저 띄우고 백필을 뒤에서 돌리므로 이 둘의 시점이 갈립니다.
+  async backfill() {
+    return { changed: false, files: 0 };
+  }
+
+  startWatching() {}
+
   async reconcile() {
     return { changed: false };
   }
@@ -75,8 +83,8 @@ export class UsageProviderRegistry extends EventEmitter {
     return [...this.adapters.values()];
   }
 
-  async startAll() {
-    for (const adapter of this.list()) await adapter.start();
+  async startAll(options = {}) {
+    for (const adapter of this.list()) await adapter.start(options);
   }
 
   stopAll() {
