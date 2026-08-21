@@ -5,7 +5,7 @@ Gemini CLI 는 세션을 **두 포맷**으로 남깁니다. 한 provider 안에 
 입니다.
 
 ```
-${GEMINI_DATA_DIR:-~/.gemini}/tmp/<프로젝트 디렉터리>/chats/
+${GEMINI_DATA_DIR:-~/.gemini/tmp}/<프로젝트 디렉터리>/chats/
   session-2026-01-01T00-00-abcd1234.json     문서 전체 스냅샷
   session-2026-01-02T00-00-bbbb2222.jsonl    증분 로그
 ```

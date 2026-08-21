@@ -10,10 +10,27 @@
 | `usage_events` | 로컬 토큰 원장 (delta) | `UNIQUE(provider, source_path, source_offset)`, 보조 `event_key` |
 | `server_usage_snapshots` | 서버 한도 snapshot (percent) | `snapshot_key` |
 | `reconciliation_events` | 로컬/서버 대조 이력 | — |
-| `provider_scan_state` | 파일별 byte offset + 이전 누적값 | `(provider, source_path)` |
+| `turns` | 턴 경계 **사실만** — 토큰 없음 (M8) | `(provider, session_id, turn_index)` |
+| `provider_scan_state` | 파일별 byte offset + 이전 누적값 + `content_hash` + `parser_version` | `(provider, source_path)` |
+| `project_aliases` | 표시 별칭 + 경로 가림 플래그 (M2) | `(provider, project_key)` |
 | `scan_state` | legacy, 마이그레이션 원본으로만 유지 | — |
 
+인덱스는 **조회가 쓰는 식 그대로** 걸립니다. 집계가
+`COALESCE(event_timestamp, observed_at)` 로 정렬·필터하고 중복 확인이
+`(provider, source_path, turn_index)` 를 찾으므로, 맨 컬럼 인덱스는 어느 쪽도
+타지 않습니다. 첫 스캔은 자기가 채우는 표를 중복 확인용으로 함께 읽기 때문에
+이것이 백필을 이차식으로 만들었습니다 — 실측 18k 행에서 1건 6.345ms → 0.128ms.
+같은 이유로 중복 확인에는 `OR` 를 쓰지 않습니다(SQLite 는 서로 다른 컬럼에 걸친
+`OR` 에 인덱스를 쓰지 않습니다).
+
 ## 1. `usage_events` — 4개 컬럼 추가 (완료, M3)
+
+> **적재 경로가 두 개이고 컬럼 지원이 다릅니다.** `upsertUsageEvent` 는 아래
+> 컬럼을 모두 씁니다. Codex 가 쓰는 `insertUsageEvent`(`INSERT OR IGNORE`)의
+> 컬럼 목록에는 `field_quality` · `parser_version` · `request_id` 가 **없습니다** —
+> 그래서 Codex 행 18,853개 전부 NULL 이고, 이미 들어간 행은 재해석으로도
+> 고쳐지지 않습니다(IGNORE 되므로). 결과와 고치는 방향은
+> [menus/session.md](./menus/session.md#실제-원장에서는-codex-만-비어-있습니다--미해결) 에 있습니다.
 
 ```sql
 ALTER TABLE usage_events ADD COLUMN tool_tokens INTEGER NOT NULL DEFAULT 0;
@@ -57,7 +74,7 @@ upsertUsageEvent(event, sourcePath, sourceOffset, observedAt)
 
 첫 스캔이 수만 건을 넣으므로 `transaction(run)`을 함께 추가했습니다. 단일 SQLite 연결을 Codex 수집기와 공유하므로 중첩 `BEGIN`이 나면 안 되고, 그래서 **`await`이 없는 동기 함수만** 받습니다. 수집기는 파서 결과를 500건씩 모아 한 트랜잭션으로 넣습니다.
 
-## 2. `provider_scan_state` — 2개 컬럼 추가
+## 2. `provider_scan_state` — 2개 컬럼 추가 (완료, M8·M5)
 
 ```sql
 ALTER TABLE provider_scan_state ADD COLUMN content_hash TEXT;
@@ -150,7 +167,7 @@ CREATE TABLE IF NOT EXISTS alert_events (
 
 규칙 평가는 스냅샷 생성 직후 서비스 프로세스에서 수행합니다. 클라이언트는 평가하지 않습니다 — 창을 닫아도 알림이 동작해야 하기 때문입니다.
 
-## 7. 프로젝트 별칭 — 신규
+## 7. 프로젝트 별칭 — 신규 (완료, M2)
 
 [menus/project.md](./menus/project.md)의 경로 가림 기능용입니다.
 

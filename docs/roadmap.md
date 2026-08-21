@@ -1,11 +1,18 @@
 # Provider roadmap
 
-Implementation order agreed for NyangTracker:
+Implementation order as built:
 
-1. Codex
-2. Claude Code
-3. Cursor
-4. Gemini CLI
+1. Codex — implemented
+2. Claude Code — implemented
+3. Gemini CLI — implemented
+4. Cursor — not started
+
+The original order put Cursor third. Gemini was taken first because the three
+file-tailing adapters share the same infrastructure, while Cursor is the only
+one that needs an authenticated server API — credential storage, rate limiting,
+a time-window cursor — and grouping it last keeps that infrastructure out of the
+adapters that do not need it. The phase sections below keep their original
+numbering; only the order of work changed.
 
 Codex is the reference adapter. The shared engine should not be redesigned for each later provider unless a real provider constraint requires it.
 
@@ -38,6 +45,19 @@ A Codex turn should normally appear in NyangTracker shortly after the durable ro
 - Local logs cannot prove there was no activity from another device or server-side/cloud execution.
 - Exact billing-equivalent cost may depend on information not preserved in local rollout records, such as service tier or future provider pricing rules.
 - Hooks can vary by Codex version/configuration, so file reconciliation remains mandatory.
+- **Codex is the only adapter still writing through `INSERT OR IGNORE` instead of
+  an upsert, so a row already in the ledger can never be corrected.** Measured on
+  the development machine: `turn_index`, `field_quality`, `parser_version` and
+  `request_id` are NULL for all 18,853 Codex rows, so the claim elsewhere in this
+  document that every event records its `parser_version` does not hold for Codex.
+  Worse, a NULL `turn_index` is what triggers reinterpretation, so 678 files /
+  785.2 MB are re-read and re-parsed on every startup while the repair never
+  lands. Claude and Gemini use the upsert path and show 0 such files. See
+  `docs/dev/menus/session.md`.
+- Six Codex events carry a total with an all-zero breakdown (44,006 tokens, 0.002%
+  of the adapter's total). They satisfy no accounting identity, so the aggregate
+  decomposition for Codex falls back to "overlap unverified" rather than claiming
+  a split it cannot justify — correct behaviour, but the cause is these six rows.
 
 ## Phase 2 — Claude Code Adapter
 
@@ -89,7 +109,7 @@ Status: implemented in the current branch.
 
 ### Completed
 
-- Discover `${GEMINI_DATA_DIR:-~/.gemini}/tmp/<project_dir>/chats/` in both real formats: `.json` whole-document snapshots and `.jsonl` incremental logs (header line, message lines, `$set` patch lines). `endsWith('.json')` does not match `.jsonl`, so the two extensions are listed explicitly.
+- Discover `${GEMINI_DATA_DIR:-~/.gemini/tmp}/<project_dir>/chats/` — `GEMINI_DATA_DIR` replaces the `tmp` segment, not the home, so `projects.json` is still read from `~/.gemini` — in both real formats: `.json` whole-document snapshots and `.jsonl` incremental logs (header line, message lines, `$set` patch lines). `endsWith('.json')` does not match `.jsonl`, so the two extensions are listed explicitly.
 - Resume `.jsonl` from a byte offset like the other file-based providers; for `.json`, decide re-parsing by mtime plus size and then by content hash, so a rewrite with unchanged content skips parsing entirely.
 - Map input / cached / output / thoughts / tool / total onto the common model, keeping Gemini's own accounting distinct from both Codex and Claude.
 - Deduplicate globally on `gemini|<message.id>` with request-scoped upsert, because the same message id reappears across files and lines (measured: 298 in `.json`, 636 in `.jsonl` — resumed-session copies).
@@ -114,16 +134,20 @@ Across the whole development-machine corpus (`.json` 419 files / 11,796 token-be
 
 ## Cross-provider follow-up
 
-After all four adapters are available:
+Some of this landed early, because the screens needed it before the fourth
+adapter existed:
 
-- model pricing registry with historical effective dates;
-- daily/weekly/monthly aggregation and trend charts;
-- per-project and per-model drill-down;
+- **done** daily/weekly/monthly aggregation and trend charts (M2) — hour/day/week/month buckets, cut on local time;
+- **done** per-project and per-model drill-down (M2);
+- **done** optional privacy controls for project path redaction/aliases (M2) — `project_aliases`, applied server-side so a redacted path never reaches the client;
+- **partly done** migration tests for the SQLite schema — opening an old DB and gaining the new columns while keeping existing rows is covered (`test/claude-store.test.mjs`, `test/codex-store.test.mjs`), but there is no test that pins a *versioned* upgrade path across more than one step.
+
+Still open:
+
+- model pricing registry with historical effective dates (M7);
 - source/confidence filters;
 - unattributed server activity timeline;
-- export/import of the local ledger;
-- migration/versioning tests for the SQLite schema;
-- optional privacy controls for project path redaction/aliases.
+- export/import of the local ledger (M7).
 
 ## Product rule
 

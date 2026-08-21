@@ -235,6 +235,42 @@ turns(provider, session_id, turn_index, started_at, compacted, parser_version)
 - [x] 프로젝트 → 세션 흐름 이동 시 그 프로젝트로 필터된 상태로 열림
 - [ ] Cursor처럼 턴이 불가한 provider는 "미제공"으로 표기 (M6에서 확인)
 
+### 실제 원장에서는 Codex 만 비어 있습니다 — 미해결
+
+위 단정은 전부 픽스처에서 참입니다. 그런데 개발 머신의 실제 원장을 재 보니
+**Codex 만** 턴이 안 붙어 있습니다.
+
+| provider | `turns` 경계 | 턴에 붙은 사용량 이벤트 |
+|---|---|---|
+| claude | 1,082 | 15,739 / 17,275 |
+| gemini | 2,887 | 12,317 / 12,319 |
+| **codex** | **2,718** | **6 / 18,853** |
+
+경계는 2,718개가 제대로 들어와 있으니 파서는 맞습니다. 못 붙는 곳은 **적재**
+입니다. Codex 만 `insertUsageEvent`(= `INSERT OR IGNORE`)를 쓰고 Claude·Gemini 는
+`upsertUsageEvent` 를 씁니다. 그래서:
+
+1. `turn_index` 가 NULL 인 행이 있으면 `hasUnattributedTurns` 가 참이 되어 그
+   파일을 offset 0 부터 다시 읽습니다 — 설계대로입니다.
+2. 그런데 다시 읽어 넣으려는 행은 `UNIQUE(provider, source_path, source_offset)`
+   에 이미 있으므로 **IGNORE 됩니다.** 기존 행의 `turn_index` 는 갱신되지 않습니다.
+3. 다음 기동에서 1번이 또 참입니다. **수리되지 않는 재해석이 매번 반복됩니다** —
+   실측 Codex 파일 678개 / 785.2 MB 를 기동마다 전량 다시 읽고 파싱합니다.
+
+`insertUsageEvent` 의 INSERT 컬럼 목록에 `turn_index` 는 들어 있으므로 **새로**
+들어오는 행은 정상입니다. 못 고쳐지는 것은 그 컬럼이 생기기 전에 적재된 과거
+행이고, 그것이 Codex 원장의 99.97% 입니다.
+
+같은 원인으로 `field_quality` · `parser_version` · `request_id` 도 Codex 행
+18,853개 전부 NULL 입니다 — 이 셋은 `insertUsageEvent` 의 컬럼 목록에 아예
+없습니다(`upsertUsageEvent` 에는 있습니다).
+
+고치는 방향은 Codex 도 `upsertUsageEvent` 를 쓰게 하는 것입니다. 다만 이 경로는
+누적 diff 회계를 다루므로 "같은 행을 다시 써도 합계가 안 늘어난다"를 먼저
+못박아야 합니다 — Claude·Gemini 는 요청 단위 값이라 last-wins 가 안전했지만
+ Codex 는 증분입니다. 그래서 이 문서에 **미해결로 남기고** 코드는 건드리지
+않았습니다.
+
 ## 하지 않는 것
 
 - 프롬프트·응답·도구 입출력 저장 (§17)

@@ -38,7 +38,18 @@ When the same `token_count` event includes `rate_limits`, NyangTracker stores ea
 
 A real 0.146.0 log has been observed with `primary` carrying the **weekly** window (10080 minutes) and `secondary` set to null, so a lane name never implies a window length.
 
-`primary` and `secondary` are server lane names. Product labels such as 5-hour and weekly are derived from `window_minutes`, and multiple model-specific `limit_id` values never share one gauge. These are **server-observed quota snapshots**, not token counts. No conversion from percent to tokens is attempted.
+`primary` and `secondary` are server lane names.
+
+> **Known defect in the local ledger.** Codex is the only adapter still writing
+> through `insertUsageEvent` (`INSERT OR IGNORE`) rather than an upsert, so rows
+> already in the ledger can never be corrected. Two consequences are measurable
+> on the development machine: `turn_index`, `field_quality`, `parser_version`
+> and `request_id` are NULL for all 18,853 Codex rows, and because a NULL
+> `turn_index` is exactly what triggers reinterpretation, 678 files / 785.2 MB
+> are re-read and re-parsed on every startup without the repair ever landing.
+> Details and the reason no fix was attempted here are in
+> [dev/menus/session.md](./dev/menus/session.md#실제-원장에서는-codex-만-비어-있습니다--미해결).
+ Product labels such as 5-hour and weekly are derived from `window_minutes`, and multiple model-specific `limit_id` values never share one gauge. These are **server-observed quota snapshots**, not token counts. No conversion from percent to tokens is attempted.
 
 ## Reconciliation
 

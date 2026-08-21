@@ -7,5 +7,6 @@
 - [Codex usage collection](./codex-usage.md) — Codex v1 parser, server snapshots, reconciliation and hook behavior.
 - [Claude Code Adapter v1](./claude-code-adapter.md) — implemented contract covering local transcripts, dedupe, hooks, realtime reconciliation, privacy, tests, and acceptance criteria.
 - [세션 흐름 설계](./dev/menus/session.md) — "어떤 절차로 얼마를 썼나"를 대화 본문 없이 보여주는 턴 계층과 새 탭.
-- [Provider roadmap](./roadmap.md) — Codex → Claude Code (both implemented) → Cursor → Gemini CLI implementation sequence and exit criteria.
+- [Provider roadmap](./roadmap.md) — Codex → Claude Code → Gemini CLI (all three implemented) → Cursor, with exit criteria and measured limits per adapter.
+- [Gemini CLI 어댑터 처리 사항](./dev/gemini/README.md) — 실측 전수, 포맷 두 개와 커서 규칙, 예측이 실측과 반대였던 두 곳.
 - [개발 계획 (dev/)](./dev/README.md) — 아직 구현하지 않은 것: 마일스톤, 메뉴별 화면 계획과 와이어프레임, provider별 토큰 API 설계, 오픈소스 측정 알고리즘 조사.

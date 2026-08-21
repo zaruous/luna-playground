@@ -109,19 +109,19 @@ ORDER BY last_activity DESC, provider ASC, project_name ASC   -- provider 통합
 
 ### T3. 아직 열린 항목 — 미해결
 
-M9 와 그 결함 수정 라운드가 닫지 않은 것들입니다. 지금 화면이 틀린 말을 하고 있지는 않지만, 다음 provider 가 붙거나 이 화면을 다시 손댈 때 걸립니다.
+M9·M10 과 그 결함 수정 라운드가 닫지 않은 것들입니다. 지금 화면이 틀린 말을 하고 있지는 않지만, 다음 provider 가 붙거나 이 화면을 다시 손댈 때 걸립니다.
 
 - **JSX 안의 R7 분기에는 테스트가 없습니다.** 판단이 헬퍼가 아니라 컴포넌트 안에 있는 것이 셋입니다 — `reconcileCounts`(대조 행이 없으면 0 세 개 대신 "아직 대조한 구간이 없습니다"), `hookRows`(상태를 못 읽으면 `미확인`), `serverLedgerCopy`(관측 / 대기 / 한도 미제공 / 한도 미확인 네 문구, "모른다"가 "없다"를 이김). 렌더 테스트 인프라가 저장소에 아직 없어 코드 대조로만 확인했습니다 — 인프라를 들이면 이 셋이 첫 대상입니다
 - **hook provider 목록이 두 곳입니다.** 대시보드·동기화 화면은 `capabilities.hooks` 로 고르는데 초기 상태를 당기는 목록은 아직 id 배열입니다(`HOOK_PROVIDERS`, `src/App.jsx`). 세 번째 hook provider 가 붙으면 칩에 이름은 뜨지만 상태를 영영 못 받아 `미확인` 으로 남습니다 — 거짓말은 아니지만 고칠 곳은 [동기화 화면](./budget.md#완료-기준) 의 같은 항목과 한 곳입니다
-- **"최근 프로젝트 발자국" 부제가 Codex 전용 문구입니다.** `session_meta / turn_context의 cwd 기준` 이라고 적혀 있지만 목록은 provider 통합이고, Claude 의 cwd 는 transcript 레코드에서 옵니다(`service/providers/claude/parser.mjs` 의 `claudeProjectName`). 부제를 provider 중립으로 고치면 됩니다
-- **토큰 분해의 `—` 가 두 뜻을 겹쳐 씁니다.** 조각 값이 0 이면 `—` 로 적는데, 이것이 "provider 가 그 항목을 주지 않음"(Claude 의 추론 토큰)과 "재서 0"을 같은 글자로 만듭니다. 지금은 안전한 쪽(모름)으로 기울여 뒀습니다. Claude 는 필드 키의 유무로 이미 둘을 구분하므로(`quality.fields`, `parser.mjs` 의 "reasoningTokens 키를 넣지 않는 것이 미제공 표시") 그걸 읽으면 갈라 적을 수 있고, Codex 는 필드 근거 자체를 안 남기므로 그쪽부터 채워야 합니다
+- ~~**"최근 프로젝트 발자국" 부제가 Codex 전용 문구입니다.**~~ **닫힘.** 부제가 `provider별 세션 메타데이터의 cwd 기준 자동 분류` 로 바뀌었고, 정렬 기준과 `이번 달` 범위도 부제와 배지에 함께 적힙니다(`src/views/DashboardView.jsx`)
+- **토큰 분해의 `—` 가 두 뜻을 겹쳐 씁니다.** 조각 값이 0 이면 `—` 로 적는데, 이것이 "provider 가 그 항목을 주지 않음"(Claude 의 추론 토큰)과 "재서 0"을 같은 글자로 만듭니다. 지금은 안전한 쪽(모름)으로 기울여 뒀습니다. M10 이 **"아직 안 왔다"** 를 여기서 떼어내 `로딩중..` 으로 갈랐으므로 남은 것은 이 둘뿐입니다. Claude 는 필드 키의 유무로 이미 둘을 구분하므로(`quality.fields`, `parser.mjs` 의 "reasoningTokens 키를 넣지 않는 것이 미제공 표시") 그걸 읽으면 갈라 적을 수 있고, Codex 는 필드 근거 자체를 안 남기므로 그쪽부터 채워야 합니다
 
 ## 완료 기준
 
-- [ ] 뷰 분리 후 렌더 결과·SSE 갱신·focus reconcile 동작이 이전과 동일
-- [ ] 기간 전환 시 카드/차트/프로젝트가 같은 기간을 사용
-- [ ] planned provider가 0이 아니라 `—`로 표시됨
-- [ ] 품질 배지가 provider별로 다르게 표시됨 (Codex `로컬 관측`, Claude `추정`)
+- [x] 뷰 분리 후 렌더 결과·SSE 갱신·focus reconcile 동작이 이전과 동일 — M1. 렌더 테스트 인프라가 없어 이동 전후의 `.stat-card` 텍스트와 provider 행 수를 브라우저에서 비교해 확인했습니다
+- [x] 기간 전환 시 카드/차트/프로젝트가 같은 기간을 사용 — M10. 대시보드에 기간 칩이 붙고 요약 카드·provider 막대·그 아래 분해가 함께 따라갑니다. **서버 한도·동기화 패널·최근 프로젝트는 의도적으로 이번 달에 고정**하고 그 사실을 각자 라벨에 적습니다 — 한도 snapshot 은 기간 개념이 없고(지금 값이거나 없음), "최근" 목록에 전체 기간을 적용하면 목록의 뜻이 바뀝니다
+- [x] planned provider가 0이 아니라 `—`로 표시됨 — M10. `src/shared.js` 의 `tokensOrDash`. 여기에 세 번째 상태가 더 있습니다: 아직 값이 안 온 자리는 `0` 도 `—` 도 아니라 `로딩중..` 입니다
+- [x] 품질 배지가 provider별로 다르게 표시됨 — 다만 **괄호 안의 예시가 틀렸습니다.** Claude 는 `추정` 이 아니라 Codex·Gemini 와 같은 `local_observed` 입니다(`service/providers/*/collector.mjs`). 셋 다 로컬 로그를 직접 읽으므로 provenance 는 같고, provider별로 갈리는 것은 **필드 등급**입니다 — Claude 만 `field_quality` 를 남겨 `exact`/`partial` 을 섞어 보여줍니다. `추정` 라벨은 가격 레지스트리(M7)를 위해 예약된 자리입니다
 - [x] (T1) 캐시 적중·서버 한도·서버 동기화가 provider별로 갈라져 보이고, 한도를 주지 않는 provider는 0%가 아니라 "한도 미제공"으로 표시됨 — 판단 헬퍼는 `test/shared-helpers.test.mjs` 가 못박습니다(`serverQuotaState` 네 상태, `cacheHitPercent` 의 null, `featuredQuotaWindow`, `decomposeTokens`, `reconcileCopy`). JSX 를 렌더링하는 테스트는 아직 없어 화면 쪽 분기는 코드 대조로 확인했습니다(위 T3)
 - [x] (T2) 최근 프로젝트 발자국의 첫 행이 항상 마지막 활동이 가장 최신인 프로젝트임 — `test/usage-aggregation.test.mjs` 의 "'최근' 프로젝트 목록은 토큰이 아니라 마지막 활동 순이다"
 

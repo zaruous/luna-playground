@@ -343,7 +343,11 @@ M5에서 구현했습니다. 처리 사항 전체는 [gemini/](./gemini/README.m
 | `totalTokens` | `total_tokens` | 네 범주 합산 | 합산 | 합산 | total |
 | 한도 | `rate_limits` (percent) | 없음 | 없음 | 금액/요청 수 | 없음 |
 | 비용 | 추정 | 추정 | `cost.usage` | `chargedCents` (실측) | 추정 |
-| `tokenAccounting` | `cache_in_input` | `cache_disjoint` | `cache_disjoint` | `cache_disjoint` | `cache_disjoint` |
+| `tokenAccounting` | `cache_in_input` | `cache_disjoint` | `cache_disjoint` | `cache_disjoint` | **`cache_in_input`** (실측, §5.4) |
+
+Gemini 칸이 §5.4 와 어긋나 있었습니다. 이 표는 예측을 적어 둔 판이 남아 있었고,
+실측은 `cached <= input` 이라 회계가 Codex 와 같습니다 — 같은 문서 안에서 두 값이
+갈리면 나중에 읽는 쪽이 표를 믿습니다. 근거는 `service/providers/accounting.mjs`.
 
 `inputTokens`가 provider마다 다른 것을 센다는 점을 표로 못박아 둡니다 — Codex는 캐시 읽기를 input 안에 포함하고 Claude는 포함하지 않습니다. 그래서 캐시 적중률 같은 파생값은 어댑터가 선언한 `tokenAccounting`으로 겹치지 않는 분모를 만들어 계산합니다.
 
