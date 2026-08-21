@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { initialDirection, nextSort } from '../table-sort.js';
 
 export function ViewHead({ title, subtitle, children }) {
   return (
@@ -42,4 +43,43 @@ export function useSlowStamp(stamp, intervalMs = 15_000) {
   }, [stamp, intervalMs]);
 
   return slow;
+}
+
+// ─── 표 헤더 클릭 정렬 ────────────────────────────────────────────────────
+// 정렬 규칙 자체는 src/table-sort.js 에 있습니다 — 화면 없이 검증할 수 있어야
+// 하는 계약이라서 갈라 두었습니다(원본 값 기준 정렬, 못 잰 값은 항상 끝).
+export { sortRows } from '../table-sort.js';
+
+export function useTableSort(columns, defaultKey = null, defaultDirection = null) {
+  const initial = (columns ?? []).find((column) => column.key === defaultKey) ?? null;
+  const [sort, setSort] = useState({
+    key: defaultKey,
+    direction: defaultDirection ?? initialDirection(initial),
+  });
+  const toggle = (key) => setSort((current) => nextSort(columns, current, key));
+  return [sort, toggle];
+}
+
+export function TableHead({ columns, sort, onSort, className = 'table-row table-head', style }) {
+  return (
+    <div className={className} role="row" style={style}>
+      {columns.map((column) => {
+        if (column.sortable === false) return <span key={column.key}>{column.label}</span>;
+        const active = sort?.key === column.key;
+        // aria-sort 는 role="columnheader" 인 요소에서만 뜻이 있습니다.
+        return (
+          <span key={column.key} role="columnheader" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+            <button
+              type="button"
+              className={`sort-header${active ? ` sort-header--${sort.direction}` : ''}`}
+              onClick={(event) => { event.stopPropagation(); onSort(column.key); }}
+            >
+              {column.label}
+              <i aria-hidden="true">{active ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅'}</i>
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
 }

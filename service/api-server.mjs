@@ -61,6 +61,10 @@ function isWithinRoot(root, candidate) {
   return candidate === root || candidate.startsWith(`${root}${path.sep}`);
 }
 
+// "전체 기간"을 요구하는 명시적인 값. 불리언 하나를 문자열로 받는 자리라
+// 표기가 갈릴 수 있어 흔한 셋을 받아 줍니다.
+const ALL_TIME_FLAGS = new Set(['1', 'true', 'yes']);
+
 export class UsageApiServer {
   constructor({
     usageEngine,
@@ -200,6 +204,23 @@ export class UsageApiServer {
     await this.#serveStatic(req, res, url.pathname);
   }
 
+  // 기간의 아래 경계를 정합니다.
+  //
+  // `since` 를 생략하면 이번 달로 좁히는 기본값이 있습니다 — 클라이언트가 실수로
+  // 전 구간을 훑지 않게 하는 보호막이라 그대로 둡니다. 문제는 "전체 기간"을
+  // 요구할 방법이 없었다는 것입니다: 쿼리스트링에는 null 이 없고 클라이언트가
+  // null 파라미터를 지우므로(src/usage-client.js 의 clean), 서버에는 "생략"과
+  // "전체"가 똑같이 도착했습니다. 그래서 세션 흐름의 '전체' 버튼이 조용히
+  // 이번 달로 동작했고, 지난달까지만 쓰던 provider 의 기록은 화면의 어느 경로
+  // 로도 볼 수 없었습니다(Gemini 어댑터를 붙이고 나서 드러났습니다).
+  //
+  // 이제 전체 기간은 명시적인 플래그입니다. `all` 이 켜지면 `since` 는 무시
+  // 합니다 — 둘이 함께 오면 더 넓은 쪽이 사용자의 의도입니다.
+  #since(query) {
+    if (ALL_TIME_FLAGS.has(query.get('all'))) return null;
+    return query.get('since') ?? this.usageEngine.defaultSince();
+  }
+
   async #handleApi(req, res, url) {
     const pathname = url.pathname;
     const query = url.searchParams;
@@ -238,7 +259,7 @@ export class UsageApiServer {
       json(res, 200, {
         sessions: this.usageEngine.store.getSessionRanking({
           provider: query.get('provider'),
-          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          since: this.#since(query),
           until: query.get('until'),
           limit: Number(query.get('limit')) || 30,
         }),
@@ -263,7 +284,7 @@ export class UsageApiServer {
         provider: query.get('provider'),
         model: query.get('model'),
         bucket: query.get('bucket') ?? 'day',
-        since: query.get('since') ?? this.usageEngine.defaultSince(),
+        since: this.#since(query),
         until: query.get('until'),
       }));
       return;
@@ -271,7 +292,7 @@ export class UsageApiServer {
     if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/models`) {
       json(res, 200, this.usageEngine.store.getModelBreakdown({
         provider: query.get('provider'),
-        since: query.get('since') ?? this.usageEngine.defaultSince(),
+        since: this.#since(query),
         until: query.get('until'),
       }));
       return;
@@ -280,7 +301,7 @@ export class UsageApiServer {
       json(res, 200, {
         projects: this.usageEngine.store.getProjectBreakdown({
           provider: query.get('provider'),
-          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          since: this.#since(query),
           until: query.get('until'),
           limit: Number(query.get('limit')) || 100,
         }),
@@ -302,7 +323,7 @@ export class UsageApiServer {
       if (!aliasPath && req.method === 'GET') {
         const detail = this.usageEngine.store.getProjectDetail({
           projectKey,
-          since: query.get('since') ?? this.usageEngine.defaultSince(),
+          since: this.#since(query),
           until: query.get('until'),
         });
         if (!detail) json(res, 404, { error: 'project_not_found' });

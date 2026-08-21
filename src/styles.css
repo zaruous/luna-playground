@@ -72,3 +72,28 @@ rect.tk-input{fill:var(--tk-input)}rect.tk-cached{fill:var(--tk-cached)}rect.tk-
 .hook-buttons{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:1100px){.hook-buttons{grid-column:1/-1}}
 @media(max-width:700px){.token-breakdown .token-split{grid-template-columns:1fr;gap:3px}}
+
+/* 첫 스캔 진행 표시 — 부분값을 확정값처럼 보이게 두지 않기 위한 띠입니다. */
+.warmup-strip{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;padding:13px 18px;margin-bottom:15px;background:color-mix(in srgb,var(--accent) 10%,var(--card));border:1px solid var(--line);border-radius:18px}
+.warmup-strip--failed{background:color-mix(in srgb,var(--warm) 12%,var(--card))}
+.warmup-copy{display:grid;gap:3px;min-width:0}.warmup-copy strong{font-size:12px;color:var(--accent2)}.warmup-strip--failed .warmup-copy strong{color:var(--warm)}.warmup-copy span{font-size:9px;color:var(--muted)}
+.warmup-meter{display:grid;gap:5px;min-width:190px}.warmup-track{height:9px;background:var(--soft);border-radius:99px;overflow:hidden}.warmup-track i{display:block;height:100%;background:var(--accent);transition:width .35s}.warmup-strip--failed .warmup-track i{background:var(--warm)}.warmup-meter small{font-size:8px;color:var(--muted);text-align:right}
+.live-pill--scanning i{background:var(--accent)}
+@media(max-width:700px){.warmup-meter{min-width:100%}}
+
+/* 헤더 클릭 정렬. 헤더 칸 자체가 그리드 셀이므로 버튼은 그 안에서 글자만
+   차지하게 두고, 정렬 방향은 화살표와 색으로 같이 알립니다. */
+.table-head .sort-header,.project-header .sort-header{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}
+.table-head .sort-header:hover,.project-header .sort-header:hover{color:var(--accent2)}
+.sort-header i{font-style:normal;font-size:7px;opacity:.35}
+.sort-header--asc,.sort-header--desc{color:var(--accent2);font-weight:700}
+.sort-header--asc i,.sort-header--desc i{opacity:1;color:var(--accent)}
+/* 측정값이 아직 안 온 자리. 36px 숫자 자리에 '로딩중..' 을 그대로 키우면
+   숫자처럼 읽히므로 크기를 낮추고 색도 본문 밖으로 뺍니다. */
+.stat-card>strong.stat-pending{font-size:20px;color:var(--muted)}
+
+/* 대시보드 기간 칩. 어느 블록이 이 칩을 따르고 어느 블록이 이번 달로 남는지는
+   각 블록의 표기가 말하고, 이 줄은 그 요약을 한 번 더 적습니다. */
+.period-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 16px;margin-bottom:15px;background:var(--card);border:1px solid var(--line);border-radius:16px}
+.period-strip .filter-note{margin:0 0 0 auto;text-align:right}
+@media(max-width:700px){.period-strip .filter-note{margin:6px 0 0;text-align:left;width:100%}}
