@@ -301,6 +301,30 @@ export class UsageStore {
         ON server_usage_snapshots(provider, limit_id, window_type, observed_at);
       CREATE INDEX IF NOT EXISTS idx_reconcile_provider_time
         ON reconciliation_events(provider, to_observed_at);
+
+      -- 아래 넷은 **표현식을 그대로** 색인합니다. 조회하는 쪽도 같은 COALESCE
+      -- 를 쓰기 때문에 SQLite 가 이 색인을 탑니다. 컬럼만 색인해 두면 provider
+      -- 로만 좁혀지고 COALESCE 는 전수 평가가 되어, 스냅샷 한 건 넣을 때마다
+      -- 원장 전체를 훑습니다 — 첫 백필이 O(n²) 로 커지는 지점이 정확히
+      -- 여기였습니다(스냅샷 3.4만 건에 35분).
+      -- turn_index 를 쓰는 색인이 있어 이 블록은 위쪽 ALTER 들 뒤에 있어야
+      -- 합니다. migrate() 쪽에 두면 옛 DB 에서 "no such column" 이 납니다.
+      CREATE INDEX IF NOT EXISTS idx_usage_events_effective_at
+        ON usage_events(provider, COALESCE(event_timestamp, observed_at));
+      CREATE INDEX IF NOT EXISTS idx_server_snapshots_window_effective_at
+        ON server_usage_snapshots(
+          provider, COALESCE(limit_id, 'default'), window_type,
+          COALESCE(window_minutes, -1), COALESCE(event_timestamp, observed_at) DESC, id DESC);
+      -- 같은 내용의 스냅샷을 걸러내는 경로. event_timestamp 를 앞에 두어야
+      -- 창(window) 안 수만 건이 아니라 같은 시각의 몇 건으로 좁혀집니다.
+      CREATE INDEX IF NOT EXISTS idx_server_snapshots_dedup
+        ON server_usage_snapshots(
+          provider, event_timestamp, window_type,
+          COALESCE(limit_id, 'default'), used_percent, COALESCE(window_minutes, -1));
+      -- hasUnattributedTurns 는 파일당 한 번 호출됩니다. turn_index 까지 색인에
+      -- 담아 두면 원장을 열지 않고 색인만 보고 답합니다.
+      CREATE INDEX IF NOT EXISTS idx_usage_events_source
+        ON usage_events(provider, source_path, turn_index);
       INSERT OR IGNORE INTO provider_scan_state (
         provider, source_path, byte_offset, file_size, mtime_ms,
         last_input_tokens, last_cached_input_tokens, last_cache_write_input_tokens,
@@ -486,22 +510,31 @@ export class UsageStore {
     const eventKey = event.eventKey ?? stableEventKey(
       provider, session.sessionId, event.eventTimestamp, session.model, usage,
     );
+    // 두 갈래를 OR 하나로 묶으면 SQLite 가 어느 색인도 못 쓰고 원장을 전수
+    // 훑습니다. 원장이 커질수록 삽입 한 건이 비싸져 첫 백필이 O(n²) 가 됩니다
+    // (실측: 건당 6.3ms, 1.9만 건에 120초). 갈래를 나눠 각자 색인을 타게 합니다.
     if (eventKey) {
-      const duplicate = this.db.prepare(`
+      const keyMatch = this.db.prepare(`
+        SELECT 1 FROM usage_events WHERE provider = ? AND event_key = ? LIMIT 1
+      `).get(provider, eventKey);
+      if (keyMatch) return false;
+      // event_key 가 없던 시절에 쌓인 행은 위 조회로 안 걸립니다. 같은 내용인지
+      // 필드로 직접 견줍니다 — 키가 바로 이 필드들로 만들어지므로 이 비교는
+      // 키 비교와 같은 뜻입니다. 앞의 세 컬럼이 idx_usage_events_session 과
+      // 맞아 같은 세션·같은 시각의 몇 건으로 좁혀집니다.
+      const shapeMatch = this.db.prepare(`
         SELECT 1 FROM usage_events
-        WHERE provider = ? AND (
-          event_key = ? OR (
-            session_id = ? AND event_timestamp = ? AND COALESCE(model, '') = COALESCE(?, '')
-            AND input_tokens = ? AND cached_input_tokens = ? AND cache_write_input_tokens = ?
-            AND output_tokens = ? AND reasoning_tokens = ? AND total_tokens = ?
-          )
-        ) LIMIT 1
+        WHERE provider = ? AND session_id = ? AND event_timestamp = ?
+          AND COALESCE(model, '') = COALESCE(?, '')
+          AND input_tokens = ? AND cached_input_tokens = ? AND cache_write_input_tokens = ?
+          AND output_tokens = ? AND reasoning_tokens = ? AND total_tokens = ?
+        LIMIT 1
       `).get(
-        provider, eventKey, session.sessionId, event.eventTimestamp, session.model ?? null,
+        provider, session.sessionId, event.eventTimestamp, session.model ?? null,
         usage.inputTokens, usage.cachedInputTokens, usage.cacheWriteInputTokens,
         usage.outputTokens, usage.reasoningTokens, usage.totalTokens,
       );
-      if (duplicate) return false;
+      if (shapeMatch) return false;
     }
     const measurementSource = event.measurementSource ?? 'local_log';
     const measurementQuality = event.measurementQuality ?? 'local_exact';
@@ -658,22 +691,32 @@ export class UsageStore {
       const snapshotKey = stableSnapshotKey(
         provider, event.session?.sessionId, event.eventTimestamp, limitId, windowType, window,
       );
+      // 두 갈래를 OR 하나로 묶으면 SQLite 가 어느 색인도 못 쓰고 전수 훑기로
+      // 떨어집니다. 갈래별로 나눠 각자 자기 색인을 타게 합니다.
       if (snapshotKey) {
-        const duplicate = this.db.prepare(`
+        const keyMatch = this.db.prepare(`
           SELECT 1 FROM server_usage_snapshots
-          WHERE provider = ? AND (
-            snapshot_key = ? OR (
-              COALESCE(session_id, '') = COALESCE(?, '') AND event_timestamp = ?
-              AND COALESCE(limit_id, 'default') = ? AND window_type = ?
-              AND used_percent = ? AND COALESCE(window_minutes, -1) = COALESCE(?, -1)
-              AND COALESCE(resets_at, -1) = COALESCE(?, -1)
-            )
-          ) LIMIT 1
+          WHERE provider = ? AND snapshot_key = ? LIMIT 1
+        `).get(provider, snapshotKey);
+        if (keyMatch) continue;
+        // snapshot_key 가 없던 시절에 쌓인 행은 위 조회로 안 걸립니다. 같은
+        // 내용인지 필드로 직접 견줍니다 — 키가 바로 이 필드들로 만들어지므로
+        // 이 비교는 키 비교와 같은 뜻입니다.
+        const shapeMatch = this.db.prepare(`
+          SELECT 1 FROM server_usage_snapshots
+          WHERE provider = ? AND event_timestamp = ? AND window_type = ?
+            AND COALESCE(limit_id, 'default') = ?
+            AND used_percent = ?
+            AND COALESCE(window_minutes, -1) = COALESCE(?, -1)
+            AND COALESCE(session_id, '') = COALESCE(?, '')
+            AND COALESCE(resets_at, -1) = COALESCE(?, -1)
+          LIMIT 1
         `).get(
-          provider, snapshotKey, event.session?.sessionId ?? null, event.eventTimestamp,
-          limitId, windowType, window.usedPercent, window.windowMinutes, window.resetsAt,
+          provider, event.eventTimestamp, windowType, limitId,
+          window.usedPercent, window.windowMinutes,
+          event.session?.sessionId ?? null, window.resetsAt,
         );
-        if (duplicate) continue;
+        if (shapeMatch) continue;
       }
       const result = this.db.prepare(`
         INSERT OR IGNORE INTO server_usage_snapshots (
