@@ -21,10 +21,19 @@ export function extractSessionIdFromPath(filePath) {
   return match?.[0] ?? path.basename(filePath, path.extname(filePath));
 }
 
+// 로그를 쓴 기계와 읽는 기계의 OS가 다를 수 있습니다 — 예를 들어 WSL에서
+// Windows Codex 로그를 읽으면 cwd 는 'C:\\Users\\...' 인데 호스트의 path 는
+// POSIX 라 basename 이 백슬래시를 구분자로 보지 않습니다. cwd 는 우리 파일
+// 시스템의 경로가 아니라 로그에 적힌 데이터이므로 두 구분자를 모두 처리합니다.
 export function projectNameFromCwd(cwd) {
   if (!cwd) return 'unknown-project';
-  const normalized = path.resolve(cwd);
-  return path.basename(normalized) || normalized;
+  const trimmed = String(cwd).trim().replace(/[\\/]+$/, '');
+  if (!trimmed) return 'unknown-project';
+  const segments = trimmed.split(/[\\/]+/).filter((segment) => segment && segment !== '.');
+  const last = segments[segments.length - 1];
+  // 드라이브 문자만 남으면(예: 'C:') 이름으로 쓰지 않고 원본을 유지합니다.
+  if (!last || /^[a-zA-Z]:$/.test(last)) return trimmed;
+  return last;
 }
 
 export function isoNow() {

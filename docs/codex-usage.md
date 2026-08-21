@@ -36,6 +36,8 @@ When the same `token_count` event includes `rate_limits`, NyangTracker stores ea
 - `resets_at`
 - `limit_id` / `limit_name`
 
+A real 0.146.0 log has been observed with `primary` carrying the **weekly** window (10080 minutes) and `secondary` set to null, so a lane name never implies a window length.
+
 `primary` and `secondary` are server lane names. Product labels such as 5-hour and weekly are derived from `window_minutes`, and multiple model-specific `limit_id` values never share one gauge. These are **server-observed quota snapshots**, not token counts. No conversion from percent to tokens is attempted.
 
 ## Reconciliation
