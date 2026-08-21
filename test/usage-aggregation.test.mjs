@@ -137,20 +137,30 @@ test('한도 이력은 percent만 담고 토큰을 섞지 않는다', () => {
 test('누적 막대 분해는 겹치지 않고 합이 총합과 정확히 일치한다', async () => {
   const { decomposeTokens } = await import('../src/shared.js');
 
-  // Codex 회계: cached·cacheWrite ⊆ input, reasoning ⊆ output, total = input + output
+  // 실제 Codex 회계(ccusage 대조로 확인): input = 비캐시 + 캐시읽기,
+  // total = input + output, 캐시 쓰기는 total 밖.
   const codexLike = {
-    inputTokens: 23641132,
-    cachedInputTokens: 20949124,
-    cacheWriteInputTokens: 979433,
-    outputTokens: 813590,
-    reasoningTokens: 448392,
-    totalTokens: 24454722,
+    inputTokens: 906093,
+    cachedInputTokens: 817671,
+    cacheWriteInputTokens: 34582,
+    outputTokens: 53297,
+    reasoningTokens: 28188,
+    totalTokens: 959390,
   };
   const decomposed = decomposeTokens(codexLike);
   assert.equal(decomposed.nested, true);
+
   const drawn = decomposed.segments.reduce((sum, segment) => sum + segment.value, 0);
   assert.equal(drawn, codexLike.totalTokens, '그려진 조각의 합이 총합과 달라 이중 계상입니다');
   assert.ok(decomposed.segments.every((segment) => segment.value >= 0));
+
+  // 비캐시 입력은 input - cached 여야 합니다(캐시 쓰기를 빼면 안 됩니다).
+  const uncached = decomposed.segments.find((segment) => segment.key === 'inputTokens');
+  assert.equal(uncached.value, codexLike.inputTokens - codexLike.cachedInputTokens);
+
+  // 캐시 쓰기는 total 밖이므로 스택이 아니라 extras 로 나옵니다.
+  assert.ok(!decomposed.segments.some((segment) => segment.key === 'cacheWriteInputTokens'));
+  assert.equal(decomposed.extras[0].value, codexLike.cacheWriteInputTokens);
 
   // 범주를 그대로 쌓으면 두 배 가까이 부풀어 오르는 것을 함께 못박습니다.
   const naive = codexLike.inputTokens + codexLike.cachedInputTokens + codexLike.cacheWriteInputTokens

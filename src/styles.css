@@ -45,3 +45,5 @@
 /* SVG 마크는 fill 로 칠합니다 (HTML 범례 칩은 background 사용) */
 rect.tk-input{fill:var(--tk-input)}rect.tk-cached{fill:var(--tk-cached)}rect.tk-cachew{fill:var(--tk-cachew)}rect.tk-output{fill:var(--tk-output)}rect.tk-reason{fill:var(--tk-reason)}
 @media(max-width:700px){.alias-row{grid-template-columns:1fr}.period-grid{grid-template-columns:1fr 1fr}}
+.chart-tooltip-extra{grid-template-columns:auto 1fr auto!important;opacity:.75;padding-top:3px}
+.legend-extra{opacity:.75;font-style:italic}

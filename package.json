@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.4",
+    "ccusage": "20.0.20",
     "vite": "^6.4.3"
   },
   "engines": {

@@ -33,6 +33,8 @@ export default function StackedBars({ buckets, bucketLabel = (value) => value })
   const barWidth = Math.min(34, Math.max(6, step - 8));
   const labelEvery = Math.ceil(columns.length / 12);
   const approximate = columns.some((column) => !column.nested);
+  const extraKeys = new Map();
+  for (const column of columns) for (const extra of column.extras ?? []) extraKeys.set(extra.key, extra);
   const legendItems = columns[0].segments.map((segment) => ({
     key: segment.key,
     label: segment.label,
@@ -87,12 +89,18 @@ export default function StackedBars({ buckets, bucketLabel = (value) => value })
             <span key={segment.key}><i className={segment.tone} />{segment.label}<b>{formatTokens(segment.value)}</b></span>
           ))}
           <span className="chart-tooltip-total">합계<b>{formatTokens(columns[hovered].sum)}</b></span>
+          {(columns[hovered].extras ?? []).filter((extra) => extra.value > 0).map((extra) => (
+            <span key={extra.key} className="chart-tooltip-extra"><i className={extra.tone} />{extra.label} ({extra.note})<b>{formatTokens(extra.value)}</b></span>
+          ))}
         </div>
       ) : null}
 
       <div className="legend chart-legend">
         {legendItems.map((item) => (
           <span key={item.key} className={item.present ? '' : 'legend-off'}><i className={item.tone} />{item.label}{item.present ? '' : ' (미제공)'}</span>
+        ))}
+        {[...extraKeys.values()].map((extra) => (
+          <span key={extra.key} className="legend-extra"><i className={extra.tone} />{extra.label} ({extra.note})</span>
         ))}
       </div>
       {approximate ? <p className="filter-note">일부 버킷에서 토큰 범주가 겹치는지 판단할 수 없어 원래 범주를 그대로 쌓았습니다 — 합계가 실제보다 클 수 있습니다.</p> : null}
