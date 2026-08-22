@@ -7,7 +7,7 @@ import { promptSideTokensFor } from '../../service/providers/accounting.mjs';
 import { TableHead, sortRows, useTableSort, useSlowStamp } from './Bits.jsx';
 import {
   providerCatalog, formatTokens, formatPercent, relativeTime,
-  windowLabel, quotaLabel, resetLabel, reconcileCopy,
+  windowLabel, quotaLabel, resetLabel,
   aggregateQuality, qualityBadge, qualityFieldSummary,
   buildProviderTokenSplits, cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
   decomposeTokens, PENDING_LABEL, percentText, providerActivityLabel, tokensOrDash, tokensText,
@@ -241,13 +241,36 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
       : quotaStates.some((entry) => entry.quota.state === 'planned')
         ? 'planned'
         : quotaStates.length ? 'none' : 'unknown'];
-  // 냥코멘트는 "서버와 로컬을 대조했다"는 이야기입니다 — 서버 원장이 있는
-  // provider 것만 먹여야 합니다. 아무 provider 나 먼저 잡으면 Claude 데이터 위에
-  // Codex 의 대조 서사를 얹게 됩니다.
-  // 이름도 같이 넘깁니다 — 문구가 "이 PC의 로컬 ○○ 로그"라고 말하는 이상,
-  // 그 ○○ 는 지금 먹인 reconciliation 의 주인이어야 합니다.
-  const ledgerOwner = ledgerRows.find((row) => row.capabilities?.serverQuota) ?? null;
-  const [commentTitle, commentText] = reconcileCopy(ledgerOwner?.reconciliation, ledgerOwner?.name);
+  // 냥코멘트는 서버가 줍니다(GET /api/v1/comments). 문구 표를 화면에도 두면 한쪽만
+  // 고쳤을 때 조용히 갈라지므로, 주인은 서버 하나입니다.
+  //
+  // 서버는 **지금 대조 상태에 해당하는 문구 전부**를 주고 고르는 일은 여기서
+  // 합니다. 다만 렌더마다 고르면 안 됩니다 — 이 화면은 SSE 로 몇 초마다 다시
+  // 그려서 문구가 계속 깜빡이면 읽을 수가 없습니다. 그래서 **받은 묶음이 바뀔
+  // 때 한 번만** 고르고, 그 사이에는 고정합니다.
+  const [commentPack, setCommentPack] = useState(null);
+  const [commentPick, setCommentPick] = useState(0);
+  useEffect(() => {
+    if (!api?.comments) return undefined;
+    let active = true;
+    api.comments.list()
+      .then((payload) => {
+        if (!active) return;
+        const list = Array.isArray(payload?.comments) ? payload.comments : [];
+        setCommentPack((current) => {
+          // 같은 상태의 같은 묶음이면 고른 문구를 유지합니다. 스냅샷이 올 때마다
+          // 다시 뽑으면 결국 렌더마다 바뀌는 것과 같아집니다.
+          const sameStatus = current?.status === payload?.status
+            && current?.provider?.id === (payload?.provider?.id ?? null);
+          if (sameStatus) return current;
+          setCommentPick(list.length ? Math.floor(Math.random() * list.length) : 0);
+          return { status: payload?.status ?? null, provider: payload?.provider ?? null, comments: list };
+        });
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [api, stamp]);
+  const comment = commentPack?.comments?.[commentPick] ?? null;
   // hook 은 provider 마다 따로 설치됩니다. 고르는 기준은 동기화 화면과 같은
   // capabilities.hooks 입니다 — 'codex' 하나만 보면 M3 부터 있던 Claude hook 이
   // 대시보드에서만 사라지고, 칩의 '연결' 이 누구 이야기인지도 알 수 없습니다.
@@ -457,7 +480,11 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
       <section className="cat-comment">
         <CatArt className="comment-cat" pose="yarn" label={`${currentTheme.label} 실타래 고양이 드로잉`} />
         <div className="comment-title">오늘의<br/><strong>냥코멘트</strong></div>
-        <div className="comment-copy"><p><strong>{commentTitle}</strong></p><p>{commentText}</p></div>
+        {/* 아직 안 왔으면 지어내지 않고 기다린다고 적습니다(R7). */}
+        <div className="comment-copy">
+          <p><strong>{comment ? comment.title : PENDING_LABEL}</strong></p>
+          <p>{comment ? comment.body : '서비스에서 오늘의 냥코멘트를 받아오는 중이에요.'}</p>
+        </div>
         <div className="heart-doodle" aria-hidden="true">♡</div>
       </section>
 

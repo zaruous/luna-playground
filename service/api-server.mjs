@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
+import { catCommentPayload } from './cat-comments.mjs';
 
 const API_PREFIX = '/api/v1';
 const HOOK_ROUTE = new RegExp(`^${API_PREFIX}/providers/([a-z0-9_-]+)/hooks$`);
@@ -342,6 +343,13 @@ export class UsageApiServer {
           limit: Number(query.get('limit')) || 100,
         }),
       });
+      return;
+    }
+    // 냥코멘트. 문구 표는 서버에만 있고(양쪽에 두면 조용히 갈라집니다) 여기서는
+    // 현재 대조 상태에 **해당하는 것 전부**를 내려 줍니다. 그중 하나를 고르는 일은
+    // 화면이 합니다 — 서버가 골라 버리면 요청마다 바뀌어 이유 없이 깜빡입니다.
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/comments`) {
+      json(res, 200, catCommentPayload(this.usageEngine.snapshot()));
       return;
     }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/quota/history`) {

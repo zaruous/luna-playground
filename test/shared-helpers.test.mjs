@@ -4,7 +4,7 @@ import { promptSideTokens } from '../service/providers/accounting.mjs';
 import {
   buildChartColumns, buildProviderTokenSplits, cacheHitPercent, connectionState, decomposeTokens,
   featuredQuotaWindow, formatPercent, geminiProviderActivityLabel, geminiSourceState, geminiTokensBlocked,
-  hookProviderIds, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
+  hookProviderIds, providerQuotaWindows, resolvePeriodBreakdown,
   sumTokenFields, serverQuotaState,
 } from '../src/shared.js';
 
@@ -210,25 +210,7 @@ test('토큰 분해는 provider 회계별로만 겹치지 않고, 합계는 어�
   assert.equal(emptySplit.sum, 0);
 });
 
-test('대조 문구는 자기 이름이 아닌 provider 를 대신 말하지 않는다', () => {
-  const [cursorTitle, cursorBody] = reconcileCopy({ status: 'UNATTRIBUTED_SERVER_USAGE' }, 'Cursor');
-  assert.match(cursorBody, /로컬 Cursor 로그/);
-  assert.doesNotMatch(`${cursorTitle} ${cursorBody}`, /Codex|rollout/);
-  assert.match(reconcileCopy({ status: 'SYNCED' }, 'Cursor')[0], /^Cursor /);
 
-  // 이름을 못 받았으면 지어내지 않고 문장에서 뺍니다(R7).
-  const [anonTitle, anonBody] = reconcileCopy(null);
-  assert.doesNotMatch(`${anonTitle} ${anonBody}`, /Codex|rollout/);
-  assert.doesNotMatch(anonTitle, /provider|프로바이더/);
-
-  // 이름이 없다는 건 "서버 원장을 가진 provider 가 하나도 없다"는 뜻입니다.
-  // 그 상태에서 "snapshot 이 들어오면 대조합니다"는 지킬 수 없는 약속이라,
-  // 이름이 있을 때와 없을 때의 본문이 서로 달라야 합니다.
-  const [, namedBody] = reconcileCopy(null, 'Codex');
-  assert.match(namedBody, /snapshot이 들어오면/);
-  assert.doesNotMatch(anonBody, /들어오면/);
-  assert.match(anonBody, /서버 한도 원장을 주는 곳이 없어요/);
-});
 
 test('기간 합계는 provider 합산 fallback 을 화면에 내지 않는다', () => {
   const merged = sumTokenFields([{ tokens: codexTotals }, { tokens: claudeTotals }]);

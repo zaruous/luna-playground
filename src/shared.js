@@ -200,25 +200,9 @@ export function featuredQuotaWindow(provider) {
     ?? null;
 }
 
-// 이 문구는 provider 한 곳의 대조 결과를 설명합니다 — 그러므로 이름을 인자로
-// 받습니다. 'Codex' 리터럴을 두면 서버 원장을 가진 provider 가 둘이 되는 순간
-// 남의 이름으로 남의 대조를 설명하게 됩니다. 이름을 못 받으면 지어내지 않고
-// 문장에서 뺍니다(R7). 같은 이유로 'rollout 로그' 같은 Codex 전용 표현도 쓰지
-// 않습니다 — Claude 가 남기는 것은 transcript 입니다.
-export function reconcileCopy(reconciliation, providerName = null) {
-  const owner = providerName ?? '연동된 provider';
-  switch (reconciliation?.status) {
-    case 'UNATTRIBUTED_SERVER_USAGE': return ['서버 사용량 차이가 보인다냥', `서버 한도는 움직였지만 이 PC의 로컬 ${owner} 로그에서 대응 사용량을 찾지 못한 구간이 있어요. 다른 기기·클라우드 작업·지연 정산 가능성을 분리해서 기록 중입니다.`];
-    case 'LOCAL_AHEAD_OF_SERVER': return [`${owner} 로컬 로그가 먼저 달린다냥`, '로컬 토큰은 증가했지만 서버 한도 snapshot은 아직 움직이지 않은 구간이 있어요. 다음 서버 snapshot에서 다시 대조합니다.'];
-    case 'SYNCED': return [`${owner} 로컬 기록과 서버 흐름이 잘 맞는다냥`, '토큰량은 로컬 로그 원본을 보존하고, 서버 사용률은 별도 snapshot으로 저장해 서로 억지로 보정하지 않고 비교합니다.'];
-    // 서버 원장을 가진 provider 가 하나도 없으면 snapshot 은 영영 오지 않습니다.
-    // "들어오면 대조합니다" 는 그때 지킬 수 없는 약속이라 문구를 갈라 둡니다.
-    default: return providerName
-      ? [`${providerName} 기록을 관측 중이다냥`, '토큰량은 provider의 로컬 로그 기준입니다. 서버 rate-limit snapshot이 들어오면 로컬 활동과 자동으로 대조합니다.']
-      : ['로컬 기록만 보고 있다냥', '연결된 provider 중 서버 한도 원장을 주는 곳이 없어요. 지금 보이는 토큰은 전부 로컬 로그 관측값이고, 대조할 서버 값은 없습니다.'];
-  }
-}
-
+// 냥코멘트 문구는 여기 없습니다. 서버가 주인이고(service/cat-comments.mjs)
+// 화면은 GET /api/v1/comments 로 받아 그중 하나를 고릅니다 — 표를 양쪽에 두면
+// 한쪽만 고쳤을 때 조용히 갈라집니다.
 // 품질 등급은 UI 장식이 아니라 데이터입니다(docs/dev/provider-token-api.md §4).
 // 라벨은 그 문서의 표를 그대로 씁니다.
 export const qualityLabels = {

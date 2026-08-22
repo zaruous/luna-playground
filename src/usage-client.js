@@ -103,6 +103,10 @@ export function createUsageClient(config, {
       detail: (projectKey, params = {}) => request(`/projects/${projectKey}?${new URLSearchParams(clean(params))}`),
       setAlias: (projectKey, body) => request(`/projects/${projectKey}/alias`, { method: 'PUT', body: JSON.stringify(body) }),
     },
+    // 냥코멘트. 서버가 현재 대조 상태에 맞는 문구들을 주고 화면이 하나를 고릅니다.
+    comments: {
+      list: () => request('/comments'),
+    },
     // 로컬 데이터 관리. 백업 파일 자체는 내려받지 않습니다 — 서비스가 만든
     // 경로만 알려 주고, 파일은 사용자가 파일 탐색기로 다룹니다.
     data: {
