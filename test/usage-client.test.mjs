@@ -57,3 +57,60 @@ test('HTTP/SSE client maps REST commands and snapshot events to the UI contract'
   unsubscribe();
   assert.equal(FakeEventSource.instance.closed, true);
 });
+
+test('SSE 는 401 이면 재연결을 멈추고 오류를 올린다', async () => {
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/snapshot')) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  const client = createUsageClient({
+    platform: 'win32',
+    runtime: 'browser',
+    transport: { kind: 'http-sse', baseUrl: 'http://127.0.0.1:4000/', accessToken: 'stale token' },
+  }, { fetchImpl, EventSourceImpl: FakeEventSource });
+
+  let reported = null;
+  client.usage.subscribe(() => {}, (error) => { reported = error; });
+  await FakeEventSource.instance.listeners.get('error')?.({});
+  assert.equal(reported?.status, 401);
+  assert.equal(FakeEventSource.instance.closed, true);
+});
+
+test('품질 배지 헬퍼는 등급을 라벨로 바꾸고 필드별 근거를 함께 낸다', async () => {
+  const { aggregateQuality, qualityBadge, qualityFieldSummary } = await import('../src/shared.js');
+
+  // 실제 코퍼스에서 나온 모양: output 은 대부분 추정(구버전), 나머지는 로컬 관측.
+  const quality = {
+    overall: 'partial',
+    fields: {
+      inputTokens: { worst: 'partial', counts: { local_exact: 13755, partial: 2 } },
+      outputTokens: { worst: 'partial', counts: { partial: 9418, local_exact: 4339 } },
+      reasoningTokens: { worst: 'local_exact', counts: { local_exact: 4341 } },
+    },
+  };
+
+  assert.deepEqual(qualityBadge(quality), { grade: 'partial', label: '추정', tone: 'partial' });
+  assert.equal(qualityBadge(null).label, '관측 대기');
+
+  const summary = qualityFieldSummary(quality);
+  const input = summary.find((row) => row.field === 'inputTokens');
+  // 이벤트 2건 때문에 필드 전체가 "추정"으로 읽히지 않도록 다수 등급을 먼저 씁니다.
+  assert.equal(input.grade, 'local_exact');
+  assert.equal(input.text, '비캐시 입력 로컬 관측 (추정 2건)');
+  const output = summary.find((row) => row.field === 'outputTokens');
+  assert.equal(output.grade, 'partial');
+  assert.equal(output.text, '출력 추정 (로컬 관측 4,339건)');
+  const reasoning = summary.find((row) => row.field === 'reasoningTokens');
+  assert.equal(reasoning.text, '추론 로컬 관측');
+
+  // 합계 등급은 데이터가 있는 provider 중 최저치입니다.
+  assert.equal(aggregateQuality([
+    { totals: { totalTokens: 100 }, quality: { overall: 'local_exact' } },
+    { totals: { totalTokens: 200 }, quality: { overall: 'partial' } },
+    // 데이터가 없는 provider 는 등급을 끌어내리지 않습니다.
+    { totals: { totalTokens: 0 }, quality: { overall: 'unverified' } },
+  ]).grade, 'partial');
+  assert.equal(aggregateQuality([]).label, '관측 대기');
+});

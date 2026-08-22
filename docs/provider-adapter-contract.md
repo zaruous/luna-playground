@@ -43,6 +43,7 @@ Adapters emit only `updated`, `hook`, and `error-state` lifecycle events. The re
     cacheWriteInputTokens: 0,
     outputTokens: 0,
     reasoningTokens: 0,
+    toolTokens: 0,
     totalTokens: 0
   },
   eventKey: 'codex|<session>|<timestamp>|<model>|<identity token fields>',
@@ -50,9 +51,59 @@ Adapters emit only `updated`, `hook`, and `error-state` lifecycle events. The re
   cumulativeReset: false,
   incrementSource: 'last_token_usage',
   measurementSource: 'local_log',
-  measurementQuality: 'local_exact'
+  measurementQuality: 'local_exact',
+
+  // structural metadata (M8) — which turn this request belongs to, and which
+  // tools the turn called before it. Tool names only; never their arguments.
+  turnIndex: 0,
+  toolCounts: { read_file: 2 },
+  touchedPaths: ['service/store.mjs'],
+
+  // provenance of the record itself
+  fieldQuality: { outputTokens: 'exact', reasoningTokens: 'missing' },
+  parserVersion: 2,
+  requestId: null
 }
 ```
+
+`turnIndex` 0 is the **unattributed bucket**, not "the first turn": usage seen
+before any turn boundary stays there instead of being folded into a neighbouring
+turn. `toolCounts` and `touchedPaths` carry names and the last two path segments
+only — enough to classify a phase, not enough to reconstruct the work.
+
+`fieldQuality` grades fields individually rather than grading the record, so a
+record with a trustworthy total and an unverifiable `reasoningTokens` reports
+exactly that. A field the provider does not supply is **absent from the map**,
+which is how the client tells "not provided" from "measured zero".
+
+`parserVersion` records which parser wrote the row, so a later format change can
+select what to re-read. Reinterpretation triggers on the version **or** on ledger
+state (`hasUnattributedTurns`): a defective interim version that stamped the
+version but failed to write the metadata would otherwise stay empty forever.
+
+### Turn boundary event
+
+Boundaries are a separate event type, because a boundary is a fact about the
+conversation's shape while usage is a fact about a request:
+
+```js
+{
+  type: 'turn',
+  provider: 'codex',
+  sessionId: '...',
+  turnIndex: 1,
+  startedAt: '2026-08-20T10:00:00.000Z',
+  compacted: false,
+  parserVersion: 2
+}
+```
+
+The `turns` table stores boundaries and **no tokens.** Per-turn totals are
+derived by grouping `usage_events` on `turn_index`, so an incremental tail that
+splits a turn, or a resumed session that replays it, cannot double-count — the
+ledger's own deduplication is the only thing that has to be right. `compacted`
+is set only where the log actually marks compaction; Gemini's formats carry no
+such marker, so its turn rows never claim it.
 
 `incrementSource` records how the delta was derived — `last_token_usage`, `cumulative_delta` or `initial_cumulative` for Codex — and `cumulativeReset` marks a counter reset so downstream code never books a full reset total as usage. A fork keeps its parent session identity in `eventKey` so the same turn is not counted twice. Parsers may carry extra provider context on the event — Codex adds `contextWindow` — which the store currently ignores rather than persisting.
 
@@ -82,6 +133,18 @@ Quota percentages remain a server ledger. They are never converted into token to
 Each local event has a stable provider event key when the source supplies enough identity. The shared store also checks the normalized session/timestamp/model/token tuple so an active log copied into an archive path is not counted twice.
 
 Provider scan cursors are keyed by `(provider, source_path)`. A later adapter can therefore reuse a path without colliding with another provider.
+
+A cursor is one of two kinds, and the kind belongs to the **file** rather than
+the provider — Gemini writes both:
+
+| Kind | Resume rule | Cursor field |
+|---|---|---|
+| append-only log | read on from the stored byte offset | `byteOffset` |
+| whole-document snapshot | `mtime` + size first, then compare the content hash | `contentHash` |
+
+For a snapshot file `byteOffset` holds the file size — it marks "read this far",
+not a place to resume from; the hash is what decides. An unchanged rewrite skips
+`JSON.parse` entirely, which is the expensive step for that format.
 
 ## Snapshot contract
 
@@ -113,6 +176,7 @@ The snapshot envelope wraps those entries:
 {
   generatedAt,
   period: { type: 'month', since },
+  warmup: { phase, filesTotal, filesDone, providers, startedAt, finishedAt, error },
   totals,
   providers,
   projects,
@@ -120,13 +184,24 @@ The snapshot envelope wraps those entries:
 }
 ```
 
+`warmup.phase` is `idle` / `scanning` / `ready` / `failed`. It is in the snapshot
+rather than a log line because the client cannot otherwise tell an empty ledger
+from one that has not been read yet, and printing 0 for the month during the
+first scan reads as the user's own usage.
+
 `totals` is the sum of every provider entry for the current local month, `projects` carries the six most recent cross-provider projects, and `diagnostics` exposes the SQLite path plus row counters (sessions, usage events, rate snapshots, scanned files, cumulative resets). The client renders these snapshots without provider-specific token calculations.
 
 ## Adapter order
 
-1. Codex rollout JSONL and server quota snapshots.
-2. Claude Code transcript usage with stable message/request dedupe.
-3. Cursor local attribution plus official organization usage where available.
-4. Gemini CLI session usage including thoughts/reasoning categories.
+1. Codex rollout JSONL and server quota snapshots. **Implemented.**
+2. Claude Code transcript usage with stable message/request dedupe. **Implemented.**
+3. Gemini CLI session usage including thoughts/reasoning categories. **Implemented.**
+4. Cursor local attribution plus official organization usage where available.
+
+Gemini moved ahead of Cursor during implementation. The three file-tailing
+adapters share the same infrastructure, whereas Cursor is the only one needing
+an authenticated server API — credential storage, rate limiting and a
+time-window cursor — so grouping it last kept that new infrastructure out of the
+three adapters that did not need it.
 
 Private web scraping and undocumented quota-to-token conversion are outside this contract.

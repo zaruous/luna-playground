@@ -9,6 +9,23 @@ export const PROVIDER_CATALOG = Object.freeze([
 
 const REQUIRED_METHODS = ['start', 'stop', 'reconcile', 'getStatus'];
 
+// reconcile 패스가 겹치면 discoverFiles·refreshWatchers 가 중복 실행됩니다.
+// hook → scanFile 경로는 가드 밖에 둡니다 — 즉시 반응해야 하는 별도 신호입니다.
+export function createReconcileGuard() {
+  let inFlight = null;
+  return function runGuardedReconcile(runPass) {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        return await runPass();
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
+
 export function assertProviderAdapter(adapter) {
   if (!adapter || typeof adapter !== 'object') throw new TypeError('Provider adapter is required');
   if (!adapter.id || typeof adapter.id !== 'string') throw new TypeError('Provider adapter id is required');
@@ -39,6 +56,14 @@ export class UsageProviderAdapter extends EventEmitter {
   async start() {}
 
   stop() {}
+
+  // 전량 스캔(백필)과 주기 감시를 따로 켤 수 있게 열어 둡니다. 서버는 화면을
+  // 먼저 띄우고 백필을 뒤에서 돌리므로 이 둘의 시점이 갈립니다.
+  async backfill() {
+    return { changed: false, files: 0 };
+  }
+
+  startWatching() {}
 
   async reconcile() {
     return { changed: false };
@@ -75,8 +100,8 @@ export class UsageProviderRegistry extends EventEmitter {
     return [...this.adapters.values()];
   }
 
-  async startAll() {
-    for (const adapter of this.list()) await adapter.start();
+  async startAll(options = {}) {
+    for (const adapter of this.list()) await adapter.start(options);
   }
 
   stopAll() {

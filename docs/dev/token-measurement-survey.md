@@ -40,6 +40,27 @@ ccusage가 합산하는 범주는 input / output / cache creation / cache read�
 
 즉 **Claude 어댑터를 JSONL만으로 만들면 "정확한 총 토큰"을 만들 수 없습니다.** 이는 파서 품질 문제가 아니라 원본 데이터의 한계입니다.
 
+### 재측정 (2026-08-21, Claude Code 2.1.143~2.1.232)
+
+위 표는 조사 시점의 인용입니다. M3 구현 전에 실제 로컬 로그를 직접 재보니 **두 항목이 달라져 있었습니다**. 실측 대상은 214개 transcript, assistant 레코드 30,753건입니다.
+
+| 필드 | 조사 시점 인용 | 재측정 |
+|---|---|---|
+| `cache_read_input_tokens` | 정확 | 정확 — ccusage와 토큰 단위까지 일치 |
+| `cache_creation_input_tokens` | 정확 | 정확. 단 상위 필드가 0인데 `cache_creation.ephemeral_*` 내역은 0이 아닌 레코드 13건(합계 차이 2,561 토큰) |
+| `input_tokens` | 75%가 0/1 플레이스홀더 | `input ≤ 1`은 **8.9%**, 그중 98.8%는 캐시가 프롬프트를 거의 다 흡수한 정상 케이스. 한 요청의 여러 레코드에서 값이 변하지 않으므로 스트리밍 중 커지는 플레이스홀더가 아님 |
+| `output_tokens` | 10~17x 과소 (thinking 누락) | **`output_tokens_details.thinking_tokens`가 2.1.228부터 존재**하고 thinking ≤ output이 9,176/9,176건에서 성립 — thinking은 output **안에** 있음. 2.1.227 이하에는 필드가 없어 포함 여부를 증명할 수 없으므로 그 범위만 `partial` |
+
+두 사실이 R2의 적용 방향을 바꿉니다. 신뢰도를 낮추는 것만이 정직한 것이 아니라, **근거가 생긴 필드는 정확히 올려 잡는 것도** 정직한 측정입니다. 대신 등급은 픽스처가 뒷받침하는 버전 범위에만 적용하고, 범위 밖·미확인 버전은 `unverified`로 남깁니다.
+
+한편 **중복 제거는 조사보다 더 중요했습니다.** 같은 요청이 content block 단위로 여러 줄에 기록되고, 세션 resume이 transcript를 새 파일로 복사합니다. 같은 파서에 전략만 바꿔 넣은 실측:
+
+- 파일 단위 중복 제거 → 출력 **+8.37% 부풀림**
+- 전역 first-wins → 출력 **-7.22% 과소** (964,290 토큰). ccusage #888이 하루치에서 본 현상을 우리 3개월치에서 재현
+- 전역 last-wins → 채택. 파일 안에서 역행은 0건이라 max-wins와 같은 결과
+
+resume 사본이 사용량 0으로 남는 경우가 1건 있어(858 토큰) upsert에 역행 방지 가드를 함께 둡니다.
+
 ### 대안 원본: OpenTelemetry
 
 Claude Code는 [공식 텔레메트리](https://code.claude.com/docs/en/monitoring-usage)로 `claude_code.token.usage`(단위: tokens)와 `claude_code.cost.usage`(단위: USD)를 내보냅니다. 속성:
@@ -85,8 +106,8 @@ Cursor는 로컬 로그로 토큰을 셀 수 없습니다. 공식 [Admin API](ht
 
 | # | 규칙 | 근거 |
 |---|---|---|
-| R1 | 중복 제거는 **last-wins**(동일 키 중 마지막 항목 채택). `max`와 사실상 동일하나, 순서 기반이 구현·검증이 쉽다 | ccusage #888 실측 550/551 |
-| R2 | 필드 단위로 신뢰도를 기록한다. Claude의 `input_tokens`/`output_tokens`는 `measurementQuality`를 낮춰 저장하고 UI에서 `추정`/`미확인`으로 표시 | Claude JSONL 100~174x 과소 |
+| R1 | 중복 제거는 **last-wins**(동일 키 중 마지막 항목 채택). `max`와 사실상 동일하나, 순서 기반이 구현·검증이 쉽다. 키는 **파일이 아니라 요청** 단위여야 한다 | ccusage #888 실측 550/551. 자체 재측정(§2)에서 first-wins 출력 -7.22%, 파일 단위 +8.37% |
+| R2 | 필드 단위로 신뢰도를 기록한다. 낮춰 잡는 것만이 아니라, 근거가 생긴 필드는 버전 범위를 명시해 올려 잡는 것도 포함한다 | Claude JSONL 100~174x 과소(조사 시점) → 2.1.x 재측정에서 반증(§2) |
 | R3 | 누적 카운터는 반드시 diff하고, 감소는 리셋 후보로 분류한다. 리셋 시 전체 누적값을 사용량으로 기록하지 않는다 | Codex 구현 경험 + 도구 공통 |
 | R4 | 캐시 읽기 토큰은 input에 합산하지 않고 별도 필드로 유지한다 | ccusage Gemini 가이드의 이중 계상 회피 |
 | R5 | 백분율 한도는 토큰으로 변환하지 않는다. 한도 원장과 토큰 원장은 끝까지 별도 테이블 | Codex 한도가 percent 단위 |
