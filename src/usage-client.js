@@ -38,6 +38,7 @@ export function createUsageClient(config, {
     const url = new URL(`${baseUrl}/api/v1/events`);
     url.searchParams.set('access_token', accessToken);
     const source = new EventSourceImpl(url.toString());
+    let closedForAuth = false;
     const onSnapshot = (event) => {
       try {
         const message = JSON.parse(event.data);
@@ -46,7 +47,28 @@ export function createUsageClient(config, {
         onError?.(error);
       }
     };
-    const onStreamError = (event) => onError?.(event);
+    // EventSource 는 HTTP 상태를 주지 않습니다. 401 이면 브라우저가 3초마다
+    // 재연결을 반복하므로, snapshot 으로 한 번 확인한 뒤 닫습니다 — 새로고침
+    // 전까지는 토큰을 다시 얻을 경로가 없습니다(http-sse-transport.md).
+    const onStreamError = async () => {
+      if (closedForAuth) return;
+      try {
+        const response = await fetchImpl(`${baseUrl}/api/v1/snapshot`, {
+          headers: { 'X-Nyang-Access-Token': accessToken },
+        });
+        if (response.status === 401) {
+          closedForAuth = true;
+          source.close();
+          const error = new Error('unauthorized');
+          error.status = 401;
+          onError?.(error);
+          return;
+        }
+      } catch {
+        // 네트워크 단절은 아래 일반 오류로 넘깁니다.
+      }
+      onError?.({ type: 'error' });
+    };
     source.addEventListener('snapshot', onSnapshot);
     source.addEventListener('error', onStreamError);
     return () => {

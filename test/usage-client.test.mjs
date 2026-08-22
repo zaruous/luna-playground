@@ -58,6 +58,26 @@ test('HTTP/SSE client maps REST commands and snapshot events to the UI contract'
   assert.equal(FakeEventSource.instance.closed, true);
 });
 
+test('SSE 는 401 이면 재연결을 멈추고 오류를 올린다', async () => {
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/snapshot')) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  const client = createUsageClient({
+    platform: 'win32',
+    runtime: 'browser',
+    transport: { kind: 'http-sse', baseUrl: 'http://127.0.0.1:4000/', accessToken: 'stale token' },
+  }, { fetchImpl, EventSourceImpl: FakeEventSource });
+
+  let reported = null;
+  client.usage.subscribe(() => {}, (error) => { reported = error; });
+  await FakeEventSource.instance.listeners.get('error')?.({});
+  assert.equal(reported?.status, 401);
+  assert.equal(FakeEventSource.instance.closed, true);
+});
+
 test('품질 배지 헬퍼는 등급을 라벨로 바꾸고 필드별 근거를 함께 낸다', async () => {
   const { aggregateQuality, qualityBadge, qualityFieldSummary } = await import('../src/shared.js');
 

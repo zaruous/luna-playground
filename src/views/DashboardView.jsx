@@ -9,7 +9,7 @@ import {
   providerCatalog, formatTokens, formatPercent, relativeTime,
   windowLabel, quotaLabel, resetLabel, reconcileCopy,
   aggregateQuality, qualityBadge, qualityFieldSummary,
-  cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
+  buildProviderTokenSplits, cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
   decomposeTokens, PENDING_LABEL, percentText, providerActivityLabel, tokensOrDash, tokensText,
 } from '../shared.js';
 
@@ -294,14 +294,10 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
   // 어느 것도 성립하지 않아 fallback(원본 범주 그대로)으로 떨어지고, 결국 지금과
   // 같은 뒤섞인 수가 그대로 남습니다 — 그래서 provider 마다 한 줄씩, 각자의 회계로
   // 분해하고 그 회계 이름을 옆에 적습니다.
-  const tokenSplits = providerRows
-    .filter((item) => (item.periodTokens?.totalTokens ?? 0) > 0)
-    .map((item) => ({
-      id: item.id,
-      name: item.name,
-      accounting: accountingLabels[item.tokenAccounting] ?? '회계 미확인',
-      ...decomposeTokens(item.periodTokens),
-    }));
+  const tokenSplits = buildProviderTokenSplits(
+    providerRows,
+    new Map(providerRows.map((item) => [item.id, item.periodTokens])),
+  );
   const connectedProviders = providerRows.filter((provider) => provider.integration === 'connected' || provider.measurement);
   // 품질 등급은 이번 달 창으로만 계산됩니다. 다른 기간의 합계에 붙이면 남의
   // 기간의 사실을 말하게 되므로, 그때는 배지를 만들지 않습니다.

@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { promptSideTokens } from '../service/providers/accounting.mjs';
 import {
-  cacheHitPercent, decomposeTokens, featuredQuotaWindow, formatPercent,
-  providerQuotaWindows, reconcileCopy, serverQuotaState,
+  buildChartColumns, buildProviderTokenSplits, cacheHitPercent, connectionState, decomposeTokens,
+  featuredQuotaWindow, formatPercent, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
+  sumTokenFields, serverQuotaState,
 } from '../src/shared.js';
 
 // 회계가 서로 반대인 두 provider 를 나란히 둡니다. 한쪽에서만 참인 식은 다른
@@ -226,4 +227,90 @@ test('대조 문구는 자기 이름이 아닌 provider 를 대신 말하지 않
   assert.match(namedBody, /snapshot이 들어오면/);
   assert.doesNotMatch(anonBody, /들어오면/);
   assert.match(anonBody, /서버 한도 원장을 주는 곳이 없어요/);
+});
+
+test('기간 합계는 provider 합산 fallback 을 화면에 내지 않는다', () => {
+  const merged = sumTokenFields([{ tokens: codexTotals }, { tokens: claudeTotals }]);
+  const mergedDecomposed = decomposeTokens(merged);
+  assert.equal(mergedDecomposed.nested, false);
+  assert.notEqual(mergedDecomposed.sum, merged.totalTokens);
+
+  const splits = buildProviderTokenSplits(
+    [
+      { id: 'codex', name: 'Codex', tokenAccounting: 'cache_in_input' },
+      { id: 'claude', name: 'Claude', tokenAccounting: 'cache_disjoint' },
+    ],
+    new Map([['codex', codexTotals], ['claude', claudeTotals]]),
+  );
+  for (const split of splits) {
+    assert.equal(split.nested, true);
+    assert.equal(split.sum, split.id === 'codex' ? codexTotals.totalTokens : claudeTotals.totalTokens);
+    assert.equal(split.segments.reduce((sum, segment) => sum + segment.value, 0), split.sum);
+  }
+
+  const resolved = resolvePeriodBreakdown({
+    providerFilter: 'all',
+    splits,
+    mergedDecomposed,
+    totalTokens: merged.totalTokens,
+  });
+  assert.equal(resolved.layout, 'providers');
+  assert.equal(resolved.categories, null);
+  assert.match(resolved.notice, /provider마다/);
+});
+
+test('단일 provider 기간에서 nested false 면 조각 합 경고를 낸다', () => {
+  const codexUndecomposable = { inputTokens: 0, outputTokens: 0, totalTokens: 9610 };
+  const decomposed = decomposeTokens(codexUndecomposable);
+  assert.equal(decomposed.nested, false);
+  assert.notEqual(decomposed.sum, codexUndecomposable.totalTokens);
+
+  const resolved = resolvePeriodBreakdown({
+    providerFilter: 'codex',
+    splits: buildProviderTokenSplits(
+      [{ id: 'codex', name: 'Codex', tokenAccounting: 'cache_in_input' }],
+      new Map([['codex', codexUndecomposable]]),
+    ),
+    mergedDecomposed: decomposed,
+    totalTokens: codexUndecomposable.totalTokens,
+  });
+  assert.equal(resolved.layout, 'categories');
+  assert.match(resolved.notice, /조각 합|겹침/);
+});
+
+test('차트 열은 totalTokens 기준이고 nested false 슬라이스는 remainder 로 남긴다', () => {
+  const columns = buildChartColumns([
+    { bucketStart: '2026-08-01', provider: 'codex', tokens: codexTotals },
+    { bucketStart: '2026-08-01', provider: 'claude', tokens: claudeTotals },
+    { bucketStart: '2026-08-02', provider: 'codex', tokens: { inputTokens: 0, outputTokens: 0, totalTokens: 9610 } },
+  ]);
+  const mergedDay = columns.find((column) => column.bucketStart === '2026-08-01');
+  assert.equal(mergedDay.totalTokens, codexTotals.totalTokens + claudeTotals.totalTokens);
+  assert.equal(mergedDay.nested, true);
+  assert.equal(
+    mergedDay.segments.reduce((sum, segment) => sum + segment.value, 0),
+    codexTotals.totalTokens + claudeTotals.totalTokens,
+  );
+
+  const undecomposableDay = columns.find((column) => column.bucketStart === '2026-08-02');
+  assert.equal(undecomposableDay.approximate, true);
+  assert.equal(undecomposableDay.remainder, 9610);
+  assert.equal(undecomposableDay.totalTokens, 9610);
+});
+
+test('connectionState 는 401 과 그 밖의 실패와 EventSource 오류를 구분한다', () => {
+  const stale = connectionState({ error: { status: 401 } });
+  assert.equal(stale.kind, 'stale-auth');
+  assert.match(stale.message, /새로고침/);
+
+  const unreachable = connectionState({ error: { status: 503 } });
+  assert.equal(unreachable.kind, 'unreachable');
+  assert.notEqual(unreachable.message, stale.message);
+
+  const eventError = connectionState({ error: { type: 'error' } });
+  assert.equal(eventError.kind, 'unreachable');
+
+  const live = connectionState({ error: null });
+  assert.equal(live.kind, 'live');
+  assert.equal(live.message, null);
 });

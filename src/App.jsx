@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import CatArt from './CatArt.jsx';
 import { createUsageClient } from './usage-client.js';
-import { catThemes, measurementPending } from './shared.js';
+import { catThemes, connectionState, measurementPending } from './shared.js';
 import DashboardView from './views/DashboardView.jsx';
 import UsageView from './views/UsageView.jsx';
 import ProjectView from './views/ProjectView.jsx';
@@ -46,8 +46,13 @@ function App() {
   const [hookStatuses, setHookStatuses] = useState({});
   const [actionBusy, setActionBusy] = useState(false);
   const [lastUpdatePulse, setLastUpdatePulse] = useState(0);
+  const [connectionError, setConnectionError] = useState(null);
 
   const api = useMemo(() => createUsageClient(window.__NYANG_TRACKER_CONFIG__), []);
+  const connection = useMemo(
+    () => connectionState({ error: connectionError }),
+    [connectionError],
+  );
   const currentTheme = catThemes.find((theme) => theme.id === catTheme) || catThemes[0];
   // provider 하나를 지목하면 안 됩니다 — Claude 만 수집 중인데 "WAITING CODEX" 는 거짓입니다.
   const collectingProviders = (snapshot?.providers ?? []).filter((item) => item.collector?.detected);
@@ -74,19 +79,36 @@ function App() {
   useEffect(() => {
     if (!api?.usage) return undefined;
     let active = true;
-    api.usage.getSnapshot().then((value) => { if (active) setSnapshot(value); }).catch(() => {});
+
+    api.usage.getSnapshot()
+      .then((value) => { if (active) { setSnapshot(value); setConnectionError(null); } })
+      .catch((error) => { if (active) setConnectionError(error); });
+
     for (const providerId of HOOK_PROVIDERS) {
       api.hooks?.(providerId).getHookStatus()
         .then((value) => { if (active) setHookStatuses((current) => ({ ...current, [providerId]: value })); })
-        .catch(() => {});
+        .catch((error) => { if (active) setConnectionError(error); });
     }
-    const unsubscribe = api.usage.subscribe((value) => {
-      if (!active) return;
-      setSnapshot(value);
-      setLastUpdatePulse((pulse) => pulse + 1);
-    });
-    return () => { active = false; unsubscribe?.(); };
+
+    return () => { active = false; };
   }, [api]);
+
+  // 401 은 프로세스 토큰이 무효화된 상태라 SSE 재연결이 영원히 401 만 받습니다.
+  // snapshot 이 먼저 실패하면 구독을 열지 않고, 이미 열린 뒤 401 이 오면 닫습니다.
+  useEffect(() => {
+    if (!api?.usage || connectionError?.status === 401) return undefined;
+    let active = true;
+    const unsubscribe = api.usage.subscribe(
+      (value) => {
+        if (!active) return;
+        setSnapshot(value);
+        setConnectionError(null);
+        setLastUpdatePulse((pulse) => pulse + 1);
+      },
+      (error) => { if (active) setConnectionError(error); },
+    );
+    return () => { active = false; unsubscribe?.(); };
+  }, [api, connectionError?.status]);
 
   useEffect(() => {
     if (!api?.usage) return undefined;
@@ -96,8 +118,8 @@ function App() {
       if (pending || document.visibilityState !== 'visible') return;
       pending = true;
       api.usage.rescan()
-        .then((value) => { if (active) setSnapshot(value); })
-        .catch(() => {})
+        .then((value) => { if (active) { setSnapshot(value); setConnectionError(null); } })
+        .catch((error) => { if (active) setConnectionError(error); })
         .finally(() => { pending = false; });
     };
     window.addEventListener('focus', reconcileOnReturn);
@@ -112,7 +134,12 @@ function App() {
   async function rescan() {
     if (!api?.usage || actionBusy) return;
     setActionBusy(true);
-    try { setSnapshot(await api.usage.rescan()); } finally { setActionBusy(false); }
+    try {
+      setSnapshot(await api.usage.rescan());
+      setConnectionError(null);
+    } catch (error) {
+      setConnectionError(error);
+    } finally { setActionBusy(false); }
   }
 
   async function toggleHooks(providerId = 'codex') {
@@ -196,6 +223,15 @@ function App() {
             )}
           </div>
         )}
+
+        {connection.kind !== 'live' ? (
+          <div className={`connection-strip connection-strip--${connection.kind}`} role="status" aria-live="polite">
+            <div className="connection-copy">
+              <strong>{connection.kind === 'stale-auth' ? '연결이 끊겼어요' : '서비스에 닿지 못했어요'}</strong>
+              <span>{connection.message}</span>
+            </div>
+          </div>
+        ) : null}
 
         {views[activeNav] ?? views.dashboard}
       </main>

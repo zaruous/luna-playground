@@ -305,6 +305,138 @@ export const tokenCategories = [
   { key: 'reasoningTokens', label: '추론', tone: 'tk-reason' },
 ];
 
+// 기간 합계 패널 문구. JSX 가 아니라 여기 두어 node:test 로 고정합니다.
+export const PERIOD_BREAKDOWN_NOTICES = Object.freeze({
+  mergedProviders:
+    '입력 범주 정의가 provider마다 달라, 전체를 다섯 칸으로 합치면 조각 합이 맞지 않습니다. 아래는 provider별로 나눈 값입니다.',
+  singleUndecomposable:
+    '이 기간에는 토큰 범주가 겹치는지 판단할 수 없어 원래 범주를 그대로 표시합니다 — 조각 합이 합계와 다를 수 있습니다.',
+});
+
+export function sumTokenFields(rows = []) {
+  const totals = { totalTokens: 0 };
+  for (const category of tokenCategories) totals[category.key] = 0;
+  for (const row of rows) {
+    const tokens = row?.tokens ?? row;
+    for (const key of Object.keys(totals)) totals[key] += Number(tokens?.[key]) || 0;
+  }
+  return totals;
+}
+
+export function buildProviderTokenSplits(providers = [], tokensByProvider) {
+  const lookup = tokensByProvider instanceof Map
+    ? tokensByProvider
+    : new Map(Object.entries(tokensByProvider ?? {}));
+  return providers
+    .map((provider) => {
+      const tokens = lookup.get(provider.id) ?? null;
+      const totalTokens = Number(tokens?.totalTokens) || 0;
+      if (totalTokens <= 0) return null;
+      return {
+        id: provider.id,
+        name: provider.name,
+        accounting: accountingLabels[provider.tokenAccounting] ?? '회계 미확인',
+        ...decomposeTokens(tokens),
+      };
+    })
+    .filter(Boolean);
+}
+
+export function resolvePeriodBreakdown({
+  providerFilter = 'all',
+  splits = [],
+  mergedDecomposed,
+  totalTokens = 0,
+}) {
+  const activeSplits = splits.filter((split) => (Number(split?.sum) || 0) > 0);
+  if (providerFilter !== 'all' || activeSplits.length <= 1) {
+    const periodTotal = Number(totalTokens) || 0;
+    const notice = mergedDecomposed?.nested === false && periodTotal > 0
+      ? PERIOD_BREAKDOWN_NOTICES.singleUndecomposable
+      : null;
+    return { layout: 'categories', categories: mergedDecomposed, notice };
+  }
+  return {
+    layout: 'providers',
+    categories: null,
+    notice: PERIOD_BREAKDOWN_NOTICES.mergedProviders,
+  };
+}
+
+function mergeDecomposedSegment(target, segment) {
+  if (!segment?.value) return;
+  const existing = target.get(segment.key);
+  if (existing) existing.value += segment.value;
+  else target.set(segment.key, { ...segment });
+}
+
+// 차트는 (b): UsageView 가 provider별로 이미 분해한 조각을 넘깁니다. 버킷마다
+// provider 를 각자 decomposeTokens 한 뒤 nested 조각만 쌓고, y축·막대 높이는
+// totalTokens(원장 합)만 씁니다 — fallback sum 으로 max 를 잡으면 1.98배까지
+// 부풀었던 실측 결함이 그대로 돌아옵니다. nested:false 슬라이스는 조각을
+// 억지로 쌓지 않고 remainder 로 남깁니다(R4).
+export function buildChartColumns(bucketRows = []) {
+  const grouped = new Map();
+  for (const row of bucketRows) {
+    const bucketStart = row.bucketStart;
+    if (!grouped.has(bucketStart)) grouped.set(bucketStart, []);
+    grouped.get(bucketStart).push(row);
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([bucketStart, rows]) => {
+      const totalTokens = rows.reduce((sum, row) => sum + (Number(row.tokens?.totalTokens) || 0), 0);
+      const segmentMap = new Map();
+      const extraMap = new Map();
+      let hasUndecomposable = false;
+
+      for (const row of rows) {
+        const rowTotal = Number(row.tokens?.totalTokens) || 0;
+        if (rowTotal <= 0) continue;
+        const decomposed = decomposeTokens(row.tokens);
+        if (decomposed.nested) {
+          for (const segment of decomposed.segments) mergeDecomposedSegment(segmentMap, segment);
+          for (const extra of decomposed.extras ?? []) mergeDecomposedSegment(extraMap, extra);
+        } else {
+          hasUndecomposable = true;
+        }
+      }
+
+      const segments = [...segmentMap.values()];
+      const extras = [...extraMap.values()];
+      const stackedInsideTotal = segments.reduce((sum, segment) => sum + segment.value, 0);
+      const remainder = Math.max(0, totalTokens - stackedInsideTotal);
+
+      return {
+        bucketStart,
+        totalTokens,
+        segments,
+        extras,
+        remainder,
+        nested: !hasUndecomposable,
+        approximate: hasUndecomposable,
+      };
+    });
+}
+
+export function connectionState({ error = null } = {}) {
+  if (!error) {
+    return { kind: 'live', message: null };
+  }
+  const status = error?.status;
+  if (status === 401) {
+    return {
+      kind: 'stale-auth',
+      message: '서비스가 다시 시작됐어요. 새로고침하면 이어집니다.',
+    };
+  }
+  return {
+    kind: 'unreachable',
+    message: '서비스에 연결하지 못했어요. 서비스가 켜져 있는지 확인한 뒤 새로고침해 보세요.',
+  };
+}
+
 // 누적 막대는 겹치지 않는 조각으로만 쌓아야 합니다(R4).
 //
 // provider 는 회계가 서로 다릅니다. 둘 다 ccusage 와의 대조로 확인했습니다
