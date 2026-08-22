@@ -12,6 +12,7 @@
 | [token-measurement-survey.md](./token-measurement-survey.md) | GitHub 오픈소스 트래커들의 토큰 측정 알고리즘 분석과 그로부터 도출한 설계 규칙 |
 | [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude·Gemini 구현 완료) |
 | [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) 처리 사항 — 실측, 포맷 두 개와 커서 규칙, 설계 결정 |
+| [fix-plan.md](./fix-plan.md) | 열린 결함 다섯 개의 수정 순서. 실측으로 세웠고, 재는 과정에서 감사 당시 서술 여덟 개가 틀렸음이 드러나 그 정정도 함께 담았습니다 |
 | [store-extensions.md](./store-extensions.md) | 위 설계를 받기 위한 SQLite 스키마·쿼리 확장 (§1·§8 구현 완료) |
 
 ## 메뉴별 구현 문서
@@ -51,3 +52,8 @@
 5. 새 provider가 공용 엔진 설계를 바꾸도록 두지 않는다 — provider 제약이 실제로 요구할 때만 바꾼다.
 
 이 원칙은 [`docs/architecture.md`](../architecture.md)와 [`docs/roadmap.md`](../roadmap.md)에서 왔고, 아래 문서들은 그 위에서만 움직입니다.
+
+
+---
+
+- 결함/버그/개선 사항은 docs/dev/item 디렉토리에 {결함명}.md 파일에 기록합니다 yml 포멧터로 tags, title, desc, start_date, end_date, stauts등을 관리하고 내용을 정리합니다. 추후 관련 내용이 개선,수정,보안되면 상태를 완료와 일자를 반영합니다.
