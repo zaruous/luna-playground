@@ -146,7 +146,7 @@ function App() {
     project: <ProjectView snapshot={snapshot} api={api} pending={pending} focus={nav.focus} onNavigate={navigate} />,
     budget: <BudgetView {...viewProps} />,
     alert: <AlertView />,
-    settings: <SettingsView snapshot={snapshot} catTheme={catTheme} onSelectTheme={setCatTheme} />,
+    settings: <SettingsView snapshot={snapshot} api={api} catTheme={catTheme} onSelectTheme={setCatTheme} />,
   };
 
   return (

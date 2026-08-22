@@ -64,6 +64,8 @@ function isWithinRoot(root, candidate) {
 // "전체 기간"을 요구하는 명시적인 값. 불리언 하나를 문자열로 받는 자리라
 // 표기가 갈릴 수 있어 흔한 셋을 받아 줍니다.
 const ALL_TIME_FLAGS = new Set(['1', 'true', 'yes']);
+// 초기화는 되돌릴 수 없으므로 클라이언트가 이 문자열을 그대로 보내야 합니다.
+const RESET_CONFIRMATION = 'RESET';
 
 export class UsageApiServer {
   constructor({
@@ -238,6 +240,40 @@ export class UsageApiServer {
     }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/diagnostics`) {
       json(res, 200, this.usageEngine.store.getDiagnostics());
+      return;
+    }
+    // 로컬 데이터 관리(docs/dev/menus/settings.md). 백업 파일을 만드는 것도
+    // 지우는 것도 서비스가 합니다 — 브라우저에 파일시스템을 열어 주면 이
+    // 저장소의 보안 경계가 무너집니다.
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/data`) {
+      json(res, 200, this.usageEngine.dataStatus());
+      return;
+    }
+    if (req.method === 'POST' && pathname === `${API_PREFIX}/data/backup`) {
+      try {
+        json(res, 200, { backup: this.usageEngine.createBackup(), ...this.usageEngine.dataStatus() });
+      } catch (error) {
+        json(res, 500, { error: 'backup_failed', message: String(error?.message ?? error) });
+      }
+      return;
+    }
+    if (req.method === 'POST' && pathname === `${API_PREFIX}/data/reset`) {
+      const body = await readJsonBody(req).catch(() => null);
+      // 되돌릴 수 없는 동작이라 정확한 확인 문자열을 요구합니다. 버튼 한 번으로
+      // 도달하지 못하게 하는 것이 목적입니다.
+      if (body?.confirm !== RESET_CONFIRMATION) {
+        json(res, 400, { error: 'confirmation_required', expected: RESET_CONFIRMATION });
+        return;
+      }
+      try {
+        const result = await this.usageEngine.resetData({
+          keepAliases: body.keepAliases !== false,
+          backupFirst: body.backupFirst !== false,
+        });
+        json(res, 200, { ...result, ...this.usageEngine.dataStatus() });
+      } catch (error) {
+        json(res, 500, { error: 'reset_failed', message: String(error?.message ?? error) });
+      }
       return;
     }
     const hookRoute = pathname.match(HOOK_ROUTE);

@@ -539,23 +539,31 @@ export class UsageStore {
     const measurementSource = event.measurementSource ?? 'local_log';
     const measurementQuality = event.measurementQuality ?? 'local_exact';
     const turnMeta = UsageStore.#turnMeta(event);
+    // tool_tokens / field_quality / parser_version / request_id 는 오랫동안 이
+    // 목록에서 빠져 있었습니다. 파서는 넷 다 실어 보내는데 이 경로로 들어온 행은
+    // 넷이 전부 NULL 이 됐고, 그래서 "모든 이벤트가 parser_version 을 남긴다"는
+    // 계약이 이 경로를 쓰는 provider(codex)에서만 거짓이었습니다. upsert 경로는
+    // 처음부터 넷을 다 씁니다 — 두 경로가 같은 열을 채우게 맞춥니다.
     const result = this.db.prepare(`
       INSERT OR IGNORE INTO usage_events (
         provider, session_id, source_path, source_offset, event_timestamp, observed_at,
         cwd, project_name, model,
         input_tokens, cached_input_tokens, cache_write_input_tokens,
-        output_tokens, reasoning_tokens, total_tokens, cumulative_reset,
+        output_tokens, reasoning_tokens, tool_tokens, total_tokens, cumulative_reset,
         measurement_source, measurement_quality, event_key,
+        field_quality, parser_version, request_id,
         turn_index, tool_counts, touched_paths
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       provider, session.sessionId, sourcePath, sourceOffset,
       event.eventTimestamp ?? null, observedAt,
       session.cwd ?? null, session.projectName ?? projectNameFromCwd(session.cwd), session.model ?? null,
       usage.inputTokens, usage.cachedInputTokens, usage.cacheWriteInputTokens,
-      usage.outputTokens, usage.reasoningTokens, usage.totalTokens,
+      usage.outputTokens, usage.reasoningTokens, usage.toolTokens ?? 0, usage.totalTokens,
       event.cumulativeReset ? 1 : 0,
       measurementSource, measurementQuality, eventKey,
+      event.fieldQuality ? JSON.stringify(event.fieldQuality) : null,
+      event.parserVersion ?? null, event.requestId ?? null,
       turnMeta.turnIndex, turnMeta.toolCounts, turnMeta.touchedPaths,
     );
     return Number(result.changes) > 0;
@@ -1527,6 +1535,34 @@ export class UsageStore {
       // 가림된 프로젝트는 경로를 내보내지 않습니다(project.md 와 같은 규칙).
       source: { mainSourcePath: project.redacted ? null : mainSourcePath, transcriptCount: sourcePaths.length },
     };
+  }
+
+  // 원장을 파일 하나로 복사합니다. `VACUUM INTO` 를 쓰는 이유는 서비스가 살아
+  // 있는 동안에도 **정합 스냅샷**을 주기 때문입니다 — 파일을 그대로 복사하면
+  // WAL 이 활성인 순간에 찢어진 사본이 나옵니다.
+  //
+  // 백업에는 **가리지 않은 원본 경로가 들어갑니다.** 경로 가림은 조회 시점에
+  // 적용되는 표시 규칙이고 저장은 원본이라, 백업 파일을 남에게 주는 것은
+  // 프로젝트 경로를 주는 것과 같습니다. 화면이 그 사실을 적어야 합니다.
+  backupTo(destPath) {
+    this.db.exec(`VACUUM INTO '${String(destPath).replace(/'/g, "''")}'`);
+    return destPath;
+  }
+
+  // 원장을 비웁니다. 별칭·가림은 **사람이 손으로 만든 것**이라 기본으로 남깁니다
+  // — 측정값은 다시 스캔하면 되지만 별칭은 되살릴 방법이 없습니다.
+  clearLedger({ keepAliases = true } = {}) {
+    const before = this.getDiagnostics();
+    this.transaction(() => {
+      // 커서를 먼저 지웁니다. 중간에 실패해도 "원장은 비었는데 커서는 다
+      // 읽었다고 말하는" 상태로 남지 않게 하려면 같은 트랜잭션이어야 합니다.
+      for (const table of ['provider_scan_state', 'scan_state', 'usage_events', 'turns',
+        'server_usage_snapshots', 'reconciliation_events', 'sessions']) {
+        this.db.exec(`DELETE FROM ${table}`);
+      }
+      if (!keepAliases) this.db.exec('DELETE FROM project_aliases');
+    });
+    return { before, after: this.getDiagnostics() };
   }
 
   getDiagnostics() {

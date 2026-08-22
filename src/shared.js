@@ -1,3 +1,21 @@
+// 초기화는 되돌릴 수 없으므로 사용자가 이 문자열을 그대로 입력해야 합니다.
+// 서버(service/api-server.mjs)도 같은 값을 요구하니, 한쪽만 바꾸면 초기화가
+// 조용히 400 으로 거절됩니다 — 값을 여기 한 곳에 두고 양쪽이 봅니다.
+export const RESET_CONFIRMATION = 'RESET';
+
+// 파일 크기 표기. 토큰 표기(formatTokens)와 달리 1024 단위입니다 — 파일
+// 탐색기에 보이는 수와 같아야 사용자가 대조할 수 있습니다.
+export function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let scaled = value / 1024;
+  let unit = 0;
+  while (scaled >= 1024 && unit < units.length - 1) { scaled /= 1024; unit += 1; }
+  return `${scaled >= 100 ? Math.round(scaled) : scaled.toFixed(1)} ${units[unit]}`;
+}
+
 export const catThemes = [
   { id: 'black', label: '블랙냥', hint: '차콜 · 크림 · 골드' },
   { id: 'white', label: '흰냥', hint: '아이보리 · 스카이블루' },

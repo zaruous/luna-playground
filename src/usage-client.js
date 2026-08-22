@@ -81,6 +81,13 @@ export function createUsageClient(config, {
       detail: (projectKey, params = {}) => request(`/projects/${projectKey}?${new URLSearchParams(clean(params))}`),
       setAlias: (projectKey, body) => request(`/projects/${projectKey}/alias`, { method: 'PUT', body: JSON.stringify(body) }),
     },
+    // 로컬 데이터 관리. 백업 파일 자체는 내려받지 않습니다 — 서비스가 만든
+    // 경로만 알려 주고, 파일은 사용자가 파일 탐색기로 다룹니다.
+    data: {
+      status: () => request('/data'),
+      backup: () => request('/data/backup', { method: 'POST' }),
+      reset: (body) => request('/data/reset', { method: 'POST', body: JSON.stringify(body) }),
+    },
     // provider 별 hook 설치. 경로가 provider id 로 갈리므로 provider 가 늘어도
     // 클라이언트에 분기가 생기지 않습니다.
     hooks: (providerId) => ({

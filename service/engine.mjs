@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { UsageStore } from './store.mjs';
@@ -76,6 +77,7 @@ function flattenQuotaWindows(rateLimits) {
 export class UsageEngine extends EventEmitter {
   constructor({ userDataPath, codexHome, claudeHomes, geminiHomes } = {}) {
     super();
+    this.userDataPath = userDataPath;
     this.store = new UsageStore(path.join(userDataPath, 'usage.sqlite3'));
     this.codex = new CodexCollector({ store: this.store, codexHome });
     this.claude = new ClaudeCollector({
@@ -89,6 +91,7 @@ export class UsageEngine extends EventEmitter {
     this.providerRegistry = new UsageProviderRegistry({ adapters: [this.codex, this.claude, this.gemini] });
     this.hookServer = new HookServer({ onSignal: (payload) => this.routeHookSignal(payload) });
     this.started = false;
+    this.resetting = false;
     this.warmup = emptyWarmupState();
     this.warmupTask = null;
     this.warmupPool = null;
@@ -153,12 +156,99 @@ export class UsageEngine extends EventEmitter {
   async stop() {
     // 풀을 먼저 닫습니다. 진행 중인 백필은 submit 이 실패하며 파일 단위로
     // 정리되고, 그래서 스토어를 닫기 전에 적재가 모두 멈춥니다.
-    await this.warmupPool?.close().catch(() => {});
-    this.providerRegistry.stopAll();
+    await this.#quiesce();
     await this.hookServer.stop();
-    await this.warmupTask?.catch(() => {});
     this.store.close();
     this.started = false;
+  }
+
+  // 적재를 멈추되 스토어는 열어 둡니다. stop() 과 초기화가 공유하는 부분이고,
+  // 초기화는 원장을 비운 뒤 다시 스캔해야 하므로 연결을 닫을 수 없습니다.
+  async #quiesce() {
+    await this.warmupPool?.close().catch(() => {});
+    this.warmupPool = null;
+    this.providerRegistry.stopAll();
+    await this.warmupTask?.catch(() => {});
+    this.warmupTask = null;
+  }
+
+  #backupDir() {
+    return path.join(this.userDataPath, 'backups');
+  }
+
+  listBackups() {
+    let names = [];
+    try {
+      names = fs.readdirSync(this.#backupDir());
+    } catch {
+      return [];
+    }
+    return names
+      .filter((name) => name.endsWith('.sqlite3'))
+      .map((name) => {
+        const full = path.join(this.#backupDir(), name);
+        try {
+          const stat = fs.statSync(full);
+          return { name, path: full, sizeBytes: stat.size, createdAt: new Date(stat.mtimeMs).toISOString() };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  // 백업은 서비스가 만듭니다. 브라우저가 파일을 쓸 수 없고, 쓸 수 있게 하면
+  // 클라이언트에 파일시스템 권한을 주는 셈이라 보안 경계가 무너집니다.
+  createBackup() {
+    fs.mkdirSync(this.#backupDir(), { recursive: true });
+    // `VACUUM INTO` 는 이미 있는 파일에 쓰지 않고 던집니다. 초 단위 이름이면
+    // 같은 초에 두 번 백업하는 것만으로 실패하고, 초기화 경로에서는 그 실패가
+    // 초기화까지 막습니다(안전한 방향이지만 이유를 알 수 없는 실패입니다).
+    // 그래서 밀리초까지 넣고, 그래도 겹치면 번호를 붙입니다 — 덮어쓰기는
+    // 하지 않습니다. 백업을 지우는 판단은 사람이 합니다.
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace(/Z$/, '');
+    let name = `usage-${stamp}.sqlite3`;
+    let full = path.join(this.#backupDir(), name);
+    for (let suffix = 2; fs.existsSync(full); suffix += 1) {
+      name = `usage-${stamp}-${suffix}.sqlite3`;
+      full = path.join(this.#backupDir(), name);
+    }
+    this.store.backupTo(full);
+    const stat = fs.statSync(full);
+    return { name, path: full, sizeBytes: stat.size, createdAt: new Date(stat.mtimeMs).toISOString() };
+  }
+
+  dataStatus() {
+    return {
+      diagnostics: this.store.getDiagnostics(),
+      backupDir: this.#backupDir(),
+      backups: this.listBackups(),
+      // 백업 파일에는 가리지 않은 원본 경로가 들어 있습니다. 화면이 이 사실을
+      // 적어야 하므로 서버가 함께 알려 줍니다.
+      backupContainsRawPaths: true,
+    };
+  }
+
+  // 원장을 비우고 처음부터 다시 잽니다. 로컬 로그가 원본이므로 재측정이
+  // 가능하고, 그래서 이 동작은 "데이터를 버리는" 것이 아니라 "파생값을 다시
+  // 만드는" 것입니다 — 다만 로그가 이미 지워진 구간은 돌아오지 않습니다.
+  async resetData({ keepAliases = true, backupFirst = true } = {}) {
+    if (this.resetting) throw new Error('초기화가 이미 진행 중입니다');
+    this.resetting = true;
+    try {
+      // 백업이 실패하면 **비우지 않습니다.** 순서가 안전성 전체입니다.
+      const backup = backupFirst ? this.createBackup() : null;
+      await this.#quiesce();
+      const cleared = this.store.clearLedger({ keepAliases });
+      this.warmup = emptyWarmupState();
+      await this.providerRegistry.startAll({ backfill: false });
+      this.warmupTask = this.#runWarmup();
+      this.#emitUpdate({ type: 'reset' });
+      return { backup, cleared, keptAliases: keepAliases, warmup: this.warmupState() };
+    } finally {
+      this.resetting = false;
+    }
   }
 
   async #runWarmup() {
