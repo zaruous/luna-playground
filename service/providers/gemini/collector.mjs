@@ -6,6 +6,7 @@ import { accountingOf } from '../accounting.mjs';
 import { readCompleteLines } from '../jsonl-tail.mjs';
 import { applyParserTail } from '../../scan-pool.mjs';
 import {
+  detectAntigravity,
   detectGeminiRoots,
   discoverGeminiSessions,
   geminiFileStrategy,
@@ -14,6 +15,7 @@ import {
   geminiSessionKey,
   readGeminiProjectIndex,
   readGeminiSessionFile,
+  resolveAntigravityHome,
   resolveGeminiHomes,
   resolveGeminiProject,
 } from './detector.mjs';
@@ -84,7 +86,47 @@ export class GeminiCollector extends UsageProviderAdapter {
       unchangedByHash: 0,
       // 옛 세션 정체로 묶인 원장을 비우고 다시 만든 횟수(정상은 0 또는 1).
       identityResets: 0,
+      sources: {
+        legacyChats: { present: false, roots: [], files: 0 },
+        antigravity: { present: false, conversations: 0, lastActivityAt: null },
+      },
     };
+  }
+
+  async #refreshSources(legacyFileCount = null) {
+    this.activeRoots = await detectGeminiRoots(this.projectRoots);
+    let legacyFiles = legacyFileCount;
+    if (legacyFiles == null && this.activeRoots.length) {
+      const groups = await Promise.all(this.activeRoots.map((root) => discoverGeminiSessions(root)));
+      legacyFiles = new Set(groups.flat()).size;
+    }
+    legacyFiles ??= 0;
+
+    let antigravity = { present: false, conversations: 0, lastActivityAt: null };
+    const antigravityHomes = new Set([
+      resolveAntigravityHome(),
+      ...this.geminiHomes.map((home) => path.join(home, 'antigravity-cli')),
+    ]);
+    for (const home of antigravityHomes) {
+      const found = await detectAntigravity(home);
+      if (!found.present) continue;
+      antigravity.present = true;
+      antigravity.conversations += found.conversationCount;
+      if (found.lastActivityAt && (!antigravity.lastActivityAt || found.lastActivityAt > antigravity.lastActivityAt)) {
+        antigravity.lastActivityAt = found.lastActivityAt;
+      }
+    }
+
+    this.status.sources = {
+      legacyChats: { present: this.activeRoots.length > 0, roots: [...this.activeRoots], files: legacyFiles },
+      antigravity,
+    };
+    // detected = 측정 가능한 옛 chats 가 있거나, agy 가 있어 "썼는데 못 잰다"고
+    // 말해야 하는 상태입니다. 옛 경로만 보면 agy 사용자에게 false 가 나가
+    // "안 썼다"로 읽힙니다(R7).
+    this.status.detected = this.status.sources.legacyChats.present || this.status.sources.antigravity.present;
+    this.status.ledgerAvailable = this.status.detected;
+    return this.status.detected;
   }
 
   // 파서 v2 에서 세션 정체가 바뀌었습니다: 로그의 sessionId → 경로 파생 키.
@@ -111,10 +153,8 @@ export class GeminiCollector extends UsageProviderAdapter {
   }
 
   async detect() {
-    this.activeRoots = await detectGeminiRoots(this.projectRoots);
-    this.status.detected = this.activeRoots.length > 0;
-    this.status.ledgerAvailable = this.status.detected;
-    if (!this.status.detected) return false;
+    const detected = await this.#refreshSources();
+    if (!detected) return false;
     this.#resetLegacyIdentity();
 
     // 색인은 reconcile 마다 다시 읽습니다 — 프로젝트가 추가되면 항목이 생기고,
@@ -139,6 +179,9 @@ export class GeminiCollector extends UsageProviderAdapter {
     const groups = await Promise.all(this.activeRoots.map((root) => discoverGeminiSessions(root)));
     const files = [...new Set(groups.flat())].sort();
     this.status.filesDiscovered = files.length;
+    if (this.status.sources?.legacyChats) {
+      this.status.sources.legacyChats.files = files.length;
+    }
     return files;
   }
 

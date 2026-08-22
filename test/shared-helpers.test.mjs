@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { promptSideTokens } from '../service/providers/accounting.mjs';
 import {
   buildChartColumns, buildProviderTokenSplits, cacheHitPercent, connectionState, decomposeTokens,
-  featuredQuotaWindow, formatPercent, hookProviderIds, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
+  featuredQuotaWindow, formatPercent, geminiProviderActivityLabel, geminiSourceState, geminiTokensBlocked,
+  hookProviderIds, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
   sumTokenFields, serverQuotaState,
 } from '../src/shared.js';
 
@@ -328,4 +329,60 @@ test('hookProviderIds 는 hooks capability 가 있는 provider id 만 낸다', (
   assert.deepEqual(hookProviderIds(null), []);
   assert.deepEqual(hookProviderIds({ providers: [] }), []);
   assert.deepEqual(hookProviderIds({}), []);
+});
+
+test('geminiSourceState 는 agy 만 있을 때 0 이 아니라 미확립 상태를 낸다', () => {
+  const agyOnly = {
+    id: 'gemini',
+    allTimeTotals: { totalTokens: 0, eventCount: 0 },
+    collector: {
+      sources: {
+        legacyChats: { present: false, files: 0 },
+        antigravity: { present: true, conversations: 1, lastActivityAt: '2026-08-22T02:12:00.000Z' },
+      },
+    },
+  };
+  const state = geminiSourceState(agyOnly);
+  assert.equal(state.kind, 'agy-unmeasured');
+  assert.match(state.label, /미확립/);
+  assert.match(state.detail, /protobuf/);
+  assert.equal(geminiTokensBlocked(agyOnly), true);
+});
+
+test('geminiSourceState 는 옛 chats 관측과 agy 공존 시 legacy-observed 다', () => {
+  const both = {
+    id: 'gemini',
+    allTimeTotals: { totalTokens: 1200, eventCount: 3 },
+    collector: {
+      sources: {
+        legacyChats: { present: true, files: 2 },
+        antigravity: { present: true, conversations: 1 },
+      },
+    },
+  };
+  assert.equal(geminiSourceState(both).kind, 'legacy-observed');
+  assert.equal(geminiTokensBlocked(both), false);
+});
+
+test('geminiSourceState 는 원본 없고 원장만 legacy-gone 이다', () => {
+  const ledgerOnly = {
+    id: 'gemini',
+    allTimeTotals: { totalTokens: 500, eventCount: 1 },
+    collector: {
+      sources: {
+        legacyChats: { present: false, files: 0 },
+        antigravity: { present: false, conversations: 0 },
+      },
+    },
+  };
+  assert.equal(geminiSourceState(ledgerOnly).kind, 'legacy-gone');
+});
+
+test('geminiSourceState 는 둘 다 없으면 미설치다', () => {
+  const empty = {
+    id: 'gemini',
+    allTimeTotals: { totalTokens: 0, eventCount: 0 },
+    collector: { sources: { legacyChats: { present: false }, antigravity: { present: false } } },
+  };
+  assert.equal(geminiSourceState(empty).kind, 'not-installed');
 });

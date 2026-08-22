@@ -11,6 +11,7 @@ import {
   aggregateQuality, qualityBadge, qualityFieldSummary,
   buildProviderTokenSplits, cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
   decomposeTokens, PENDING_LABEL, percentText, providerActivityLabel, tokensOrDash, tokensText,
+  geminiProviderActivityLabel, geminiSourceState, geminiTokensBlocked,
 } from '../shared.js';
 
 // 정렬 기준은 원본 값입니다 — 화면의 '4.60B' 를 사전순으로 세우면 319.6M 이
@@ -381,18 +382,35 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
               // 토큰이 있는데 대시보드가 "관측 대기 · —" 라고 말했습니다.
               // 큰 숫자 자리는 이번 달 몫으로 남깁니다 — 이 패널의 막대와 비중이
               // 이번 달 기준이라, 거기에 전체 기간 값을 넣으면 비교가 깨집니다.
-              const label = providerActivityLabel({
+              const label = geminiProviderActivityLabel(item, {
                 pending: rowPending,
                 badgeLabel: item.badge?.label ?? null,
                 periodTokens: item.tokens,
                 allTimeTokens: item.allTimeTotals?.totalTokens ?? 0,
                 measurement: item.measurement,
                 status: item.status,
-                // 이번 달이 아니면 품질 등급이 없습니다 — 값이 찍힌 행에
-                // "관측 대기" 를 적지 않도록 그 사실을 넘깁니다.
                 gradeUnavailable: !monthScoped,
               });
-              return <div className={`usage-row ${item.tokens === 0 ? 'usage-row--pending' : ''}`} key={item.id}><div className="ai-name"><span className={`ai-mark ${item.tone}`}>{item.short}</span><span>{item.name}<small>{label}</small></span></div><div className="bar-track"><div className={`bar ${item.tone}`} style={{ width: item.tokens ? `${Math.max(3, (item.tokens / maxTokens) * 100)}%` : '0%' }}/></div><strong>{tokensOrDash(item.tokens, rowPending)}</strong><span>{rowPending ? PENDING_LABEL : item.tokens && totals.totalTokens ? formatPercent((item.tokens / totals.totalTokens) * 100, 1) : '—'}</span></div>;
+              const geminiState = item.id === 'gemini' ? geminiSourceState(item) : null;
+              const tokenBlocked = geminiTokensBlocked(item);
+              const tokenText = tokenBlocked ? '—' : tokensOrDash(item.tokens, rowPending);
+              const shareText = rowPending
+                ? PENDING_LABEL
+                : tokenBlocked
+                  ? '—'
+                  : item.tokens && totals.totalTokens ? formatPercent((item.tokens / totals.totalTokens) * 100, 1) : '—';
+              return (
+                <div
+                  className={`usage-row ${item.tokens === 0 && !tokenBlocked ? 'usage-row--pending' : ''}`}
+                  key={item.id}
+                  title={geminiState?.detail ?? undefined}
+                >
+                  <div className="ai-name"><span className={`ai-mark ${item.tone}`}>{item.short}</span><span>{item.name}<small>{label}</small></span></div>
+                  <div className="bar-track"><div className={`bar ${item.tone}`} style={{ width: item.tokens && !tokenBlocked ? `${Math.max(3, (item.tokens / maxTokens) * 100)}%` : '0%' }}/></div>
+                  <strong>{tokenText}</strong>
+                  <span>{shareText}</span>
+                </div>
+              );
             })}
           </div>
           <div className="token-breakdown">{tokenSplits.length ? tokenSplits.map((split) => <div className="token-split" key={split.id}><span className="token-split-name">{split.name}<small>{split.accounting}{split.nested ? '' : ' · 겹침 미확인'}</small></span><div className="token-split-cells">{split.segments.map((segment) => <span key={segment.key}><i className={`legend-dot ${segment.tone}`}/>{segment.label} <strong>{segment.value ? formatTokens(segment.value) : '—'}</strong></span>)}{split.extras.map((extra) => <span className="token-split-extra" key={extra.key}><i className={`legend-dot ${extra.tone}`}/>{extra.label} <strong>{formatTokens(extra.value)}</strong> ({extra.note})</span>)}</div></div>) : <p className="ledger-note">{pending ? '로그를 읽는 중이에요 — 분해는 측정값이 도착한 뒤에 그립니다.' : totals.eventCount ? '아직 분해할 토큰이 없습니다 — 수집된 이벤트는 있지만 토큰이 0입니다.' : '아직 분해할 토큰이 없습니다 — 이번 달 수집된 사용 이벤트가 없어요.'}</p>}</div>

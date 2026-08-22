@@ -3,12 +3,49 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+export { toBytes, readVarint, scanProtobuf } from './antigravity-protobuf.mjs';
+
 // Gemini CLI 는 세션을 `<home>/tmp/<프로젝트 디렉터리>/chats/*.json` 에 남깁니다.
 // 공식 환경변수는 확인하지 못했으므로 홈 한 곳만 보고, 테스트가 다른 위치를
 // 가리킬 수 있게 NYANG_GEMINI_HOME 을 둡니다.
 export function resolveGeminiHomes(env = process.env) {
   if (env.NYANG_GEMINI_HOME) return [path.resolve(env.NYANG_GEMINI_HOME)];
   return [path.join(os.homedir(), '.gemini')];
+}
+
+// agy(Antigravity CLI) 는 ~/.gemini/antigravity-cli 아래에 SQLite 를 둡니다.
+// 테스트가 다른 위치를 가리킬 수 있게 NYANG_ANTIGRAVITY_HOME 을 둡니다.
+export function resolveAntigravityHome(env = process.env) {
+  if (env.NYANG_ANTIGRAVITY_HOME) return path.resolve(env.NYANG_ANTIGRAVITY_HOME);
+  return path.join(os.homedir(), '.gemini', 'antigravity-cli');
+}
+
+export function antigravityConversationsDir(antigravityHome) {
+  return path.join(antigravityHome, 'conversations');
+}
+
+// 감지만 합니다 — DB 를 열지 않고 conversations/*.db 의 존재와 mtime 을 봅니다.
+export async function detectAntigravity(antigravityHome) {
+  const conversationsDir = antigravityConversationsDir(antigravityHome);
+  let conversationCount = 0;
+  let lastActivityAt = null;
+  try {
+    const entries = await fsp.readdir(conversationsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.db')) continue;
+      conversationCount += 1;
+      const stat = await fsp.stat(path.join(conversationsDir, entry.name));
+      const mtime = stat.mtime.toISOString();
+      if (!lastActivityAt || mtime > lastActivityAt) lastActivityAt = mtime;
+    }
+  } catch {
+    return { present: false, conversationCount: 0, lastActivityAt: null };
+  }
+  return {
+    present: conversationCount > 0,
+    conversationCount,
+    lastActivityAt,
+  };
 }
 
 // 세션 루트는 GEMINI_DATA_DIR 로 옮길 수 있습니다

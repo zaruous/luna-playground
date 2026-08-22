@@ -257,14 +257,48 @@ test('프롬프트 · 응답 · 사고 · 도구 입출력이 SQLite 와 스냅�
 
 test('로그 위치가 없으면 조용히 미발견으로 남는다', async () => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-gemini-empty-'));
+  const prev = process.env.NYANG_ANTIGRAVITY_HOME;
+  process.env.NYANG_ANTIGRAVITY_HOME = path.join(empty, 'no-antigravity');
   const { store, collector } = open(empty);
   try {
     const result = await collector.reconcile('test');
     assert.equal(result.files, 0);
-    assert.equal(collector.getStatus().detected, false);
-    assert.equal(collector.getStatus().lastError, null, '로그가 없는 것은 오류가 아닙니다');
+    const status = collector.getStatus();
+    assert.equal(status.detected, false);
+    assert.equal(status.sources.legacyChats.present, false);
+    assert.equal(status.sources.antigravity.present, false);
+    assert.equal(status.lastError, null, '로그가 없는 것은 오류가 아닙니다');
   } finally {
+    if (prev == null) delete process.env.NYANG_ANTIGRAVITY_HOME;
+    else process.env.NYANG_ANTIGRAVITY_HOME = prev;
+    collector.stop();
     store.close();
+  }
+});
+
+test('agy conversations 만 있어도 detected 이고 sources 를 보고한다', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-gemini-agy-only-'));
+  const prev = process.env.NYANG_ANTIGRAVITY_HOME;
+  process.env.NYANG_ANTIGRAVITY_HOME = path.join(home, 'antigravity-cli');
+  const { store, collector } = open(home);
+  try {
+    fs.mkdirSync(path.join(home, 'antigravity-cli', 'conversations'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'antigravity-cli', 'conversations', 'chat.db'), '');
+    await collector.detect();
+    const status = collector.getStatus();
+    assert.equal(status.detected, true);
+    assert.equal(status.sources.legacyChats.present, false);
+    assert.equal(status.sources.antigravity.present, true);
+    assert.equal(status.sources.antigravity.conversations, 1);
+    const result = await collector.reconcile('test:agy-only');
+    assert.equal(result.files, 0);
+    assert.equal(result.changed, false);
+  } finally {
+    if (prev == null) delete process.env.NYANG_ANTIGRAVITY_HOME;
+    else process.env.NYANG_ANTIGRAVITY_HOME = prev;
+    collector.stop();
+    store.close();
+    fs.rmSync(home, { recursive: true, force: true });
   }
 });
 

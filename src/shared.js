@@ -429,6 +429,77 @@ export function hookProviderIds(snapshot) {
   return providers.filter((item) => item.capabilities?.hooks).map((item) => item.id);
 }
 
+// Gemini 는 옛 CLI chats 와 agy(Antigravity CLI) SQLite 를 둘 다 봅니다.
+// integration=connected 인데 detected=false·0 토큰이면 "안 썼다"로 읽히므로(R7)
+// 원본 종류별로 화면 문구를 갈라야 합니다.
+export function geminiSourceState(provider) {
+  if (!provider || provider.id !== 'gemini') return null;
+  const sources = provider.collector?.sources ?? {};
+  const legacy = sources.legacyChats ?? { present: false, files: 0 };
+  const agy = sources.antigravity ?? { present: false, conversations: 0 };
+  const legacyPresent = Boolean(legacy.present);
+  const agyPresent = Boolean(agy.present);
+  const allTimeTokens = Number(provider.allTimeTotals?.totalTokens) || 0;
+  const eventCount = Number(provider.allTimeTotals?.eventCount) || 0;
+  const hasLedger = eventCount > 0 || allTimeTokens > 0;
+
+  if (!legacyPresent && !agyPresent) {
+    if (hasLedger) {
+      return {
+        kind: 'legacy-gone',
+        label: '원본 로그 없음 — 원장 기록만',
+        detail: '예전 Gemini CLI 세션 파일 경로가 사라졌습니다. 원장에 남은 합계만 표시할 수 있습니다.',
+      };
+    }
+    return {
+      kind: 'not-installed',
+      label: '미설치',
+      detail: 'Gemini CLI · Antigravity CLI 로그를 찾지 못했습니다.',
+    };
+  }
+
+  if (agyPresent && !hasLedger && !legacyPresent) {
+    return {
+      kind: 'agy-unmeasured',
+      label: 'agy 사용 중 · 토큰 회계 미확립',
+      detail: 'Antigravity CLI 는 SQLite protobuf 에 사용량을 남깁니다. 필드 의미를 아직 확정하지 못해 수치를 표시하지 않습니다.',
+    };
+  }
+
+  if (!legacyPresent && hasLedger) {
+    return {
+      kind: 'legacy-gone',
+      label: '원본 로그 없음 — 원장 기록만',
+      detail: '예전 Gemini CLI 세션 파일 경로가 사라졌습니다. 원장에 남은 합계만 표시할 수 있습니다.',
+    };
+  }
+
+  if (legacyPresent && hasLedger) {
+    return { kind: 'legacy-observed', label: null, detail: null };
+  }
+
+  if (agyPresent && !hasLedger) {
+    return {
+      kind: 'agy-unmeasured',
+      label: 'agy 사용 중 · 토큰 회계 미확립',
+      detail: 'Antigravity CLI 는 SQLite protobuf 에 사용량을 남깁니다. 필드 의미를 아직 확정하지 못해 수치를 표시하지 않습니다.',
+    };
+  }
+
+  return { kind: 'legacy-observed', label: null, detail: null };
+}
+
+export function geminiTokensBlocked(provider) {
+  const state = geminiSourceState(provider);
+  return Boolean(state && state.kind !== 'legacy-observed');
+}
+
+export function geminiProviderActivityLabel(provider, options) {
+  const state = geminiSourceState(provider);
+  if (state && state.kind !== 'legacy-observed') return state.label;
+  return providerActivityLabel(options);
+}
+
 export function connectionState({ error = null } = {}) {
   if (!error) {
     return { kind: 'live', message: null };

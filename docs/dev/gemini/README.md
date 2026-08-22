@@ -9,6 +9,7 @@ Gemini CLI 세션 로그를 읽어 공용 원장에 넣는 어댑터입니다. C
 | 문서 | 내용 |
 |---|---|
 | [measurements.md](./measurements.md) | 실측 전체 — 코퍼스 규모, 토큰 항등식, 계획서 예측과 어긋난 지점 |
+| [antigravity.md](./antigravity.md) | Antigravity CLI(agy) SQLite protobuf — 확인된 것·미확정·화면 정책 |
 | [formats.md](./formats.md) | 포맷 두 개(`.json` 스냅샷 / `.jsonl` 증분 로그)와 커서 규칙, `$set` 처리 |
 | [decisions.md](./decisions.md) | 설계 결정, 하지 않은 것, 남은 것 |
 

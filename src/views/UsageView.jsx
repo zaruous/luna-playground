@@ -5,6 +5,7 @@ import {
   buildChartColumns, buildProviderTokenSplits, decomposeTokens, formatTokens, formatPercent,
   qualityBadge, qualityFieldSummary, PENDING_LABEL, resolvePeriodBreakdown,
   sumTokenFields, tokenCategories, tokensText,
+  geminiSourceState, geminiTokensBlocked,
 } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
@@ -244,17 +245,21 @@ export default function UsageView({ snapshot, api, pending = false }) {
             <TableHead columns={DETAIL_COLUMNS} sort={detailSort} onSort={toggleDetailSort} style={{ gridTemplateColumns: detailColumns }} />
             {sortedRows.map((provider) => {
               const connected = provider.integration === 'connected';
-              const hasData = (provider.periodTokens?.totalTokens ?? 0) > 0;
-              const rowPending = pending && Boolean(provider.collector?.detected);
+              const geminiState = provider.id === 'gemini' ? geminiSourceState(provider) : null;
+              const tokenBlocked = geminiTokensBlocked(provider);
+              const hasData = !tokenBlocked && (provider.periodTokens?.totalTokens ?? 0) > 0;
+              const rowPending = pending && Boolean(provider.collector?.detected) && !tokenBlocked;
               return (
-                <div className="table-row" role="row" key={provider.id} style={{ gridTemplateColumns: detailColumns }}>
+                <div className="table-row" role="row" key={provider.id} style={{ gridTemplateColumns: detailColumns }} title={geminiState?.detail ?? undefined}>
                   <strong>{provider.name}</strong>
                   {tokenCategories.map((category) => {
                     const value = categoryValue(provider.periodTokens, category.key);
-                    return <span key={category.key}>{rowPending ? PENDING_LABEL : hasData && value ? formatTokens(value) : '—'}</span>;
+                    return <span key={category.key}>{tokenBlocked ? '—' : rowPending ? PENDING_LABEL : hasData && value ? formatTokens(value) : '—'}</span>;
                   })}
-                  <strong>{rowPending ? PENDING_LABEL : hasData ? formatTokens(provider.periodTokens?.totalTokens) : '—'}</strong>
-                  {connected && hasData && !qualityMatchesPeriod
+                  <strong>{tokenBlocked ? '—' : rowPending ? PENDING_LABEL : hasData ? formatTokens(provider.periodTokens?.totalTokens) : '—'}</strong>
+                  {tokenBlocked
+                    ? <span className="quality">{geminiState.label}</span>
+                    : connected && hasData && !qualityMatchesPeriod
                     ? <span className="quality" title="품질 등급은 이번 달 창으로만 계산됩니다">등급 없음</span>
                     : connected && hasData
                     ? (() => {
