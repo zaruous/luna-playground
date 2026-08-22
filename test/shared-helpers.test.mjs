@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { promptSideTokens } from '../service/providers/accounting.mjs';
 import {
   buildChartColumns, buildProviderTokenSplits, cacheHitPercent, connectionState, decomposeTokens,
-  featuredQuotaWindow, formatPercent, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
+  featuredQuotaWindow, formatPercent, hookProviderIds, providerQuotaWindows, reconcileCopy, resolvePeriodBreakdown,
   sumTokenFields, serverQuotaState,
 } from '../src/shared.js';
 
@@ -313,4 +313,19 @@ test('connectionState 는 401 과 그 밖의 실패와 EventSource 오류를 구
   const live = connectionState({ error: null });
   assert.equal(live.kind, 'live');
   assert.equal(live.message, null);
+});
+
+test('hookProviderIds 는 hooks capability 가 있는 provider id 만 낸다', () => {
+  const snapshot = {
+    providers: [
+      { id: 'codex', capabilities: { hooks: true } },
+      { id: 'claude', capabilities: { hooks: true } },
+      { id: 'gemini', capabilities: { hooks: false } },
+      { id: 'cursor', capabilities: { hooks: false } },
+    ],
+  };
+  assert.deepEqual(hookProviderIds(snapshot), ['codex', 'claude']);
+  assert.deepEqual(hookProviderIds(null), []);
+  assert.deepEqual(hookProviderIds({ providers: [] }), []);
+  assert.deepEqual(hookProviderIds({}), []);
 });

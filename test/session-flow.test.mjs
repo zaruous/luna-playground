@@ -533,3 +533,27 @@ test('컴팩션 표시는 그 턴의 첫 요청에만 붙는다', async () => {
     env.dispose();
   }
 });
+
+test('upsertTurn 은 같은 경계를 다시 쓰면 changed 가 아니다', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-turn-idempotent-'));
+  const store = new UsageStore(path.join(root, 'usage.sqlite3'));
+  try {
+    const turn = {
+      provider: 'claude',
+      sessionId: SESSION,
+      turnIndex: 1,
+      startedAt: '2026-08-21T01:00:00.000Z',
+      compacted: false,
+      parserVersion: 'test-v1',
+    };
+    assert.deepEqual(store.upsertTurn(turn), { changed: true, inserted: true, updated: false });
+    assert.deepEqual(store.upsertTurn(turn), { changed: false, inserted: false, updated: false });
+    assert.deepEqual(
+      store.upsertTurn({ ...turn, compacted: true }),
+      { changed: true, inserted: false, updated: true },
+    );
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

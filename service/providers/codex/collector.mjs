@@ -4,7 +4,7 @@ import path from 'node:path';
 import { CODEX_PARSER_VERSION, createCodexParserState, parseCodexRolloutLine } from './parser.mjs';
 import { resolveCodexHome } from '../../utils.mjs';
 import { readCompleteLines } from '../jsonl-tail.mjs';
-import { UsageProviderAdapter } from '../contracts.mjs';
+import { UsageProviderAdapter, createReconcileGuard } from '../contracts.mjs';
 import { accountingOf } from '../accounting.mjs';
 import { applyParserTail } from '../../scan-pool.mjs';
 
@@ -55,6 +55,7 @@ export class CodexCollector extends UsageProviderAdapter {
     this.watchers = new Map();
     this.scanInFlight = new Map();
     this.reconcileTimer = null;
+    this.guardedReconcile = createReconcileGuard();
     this.status = {
       provider: 'codex',
       detected: false,
@@ -160,9 +161,8 @@ export class CodexCollector extends UsageProviderAdapter {
           if (event.type === 'session') {
             this.store.upsertSession(event.session, filePath, observedAt);
           } else if (event.type === 'turn') {
-            this.store.upsertTurn(event);
             counters.turnEvents += 1;
-            counters.changed = true;
+            if (this.store.upsertTurn(event).changed) counters.changed = true;
           } else if (event.type === 'usage') {
             if (this.store.insertUsageEvent(event, filePath, sourceOffset, observedAt)) {
               counters.changed = true;
@@ -256,25 +256,27 @@ export class CodexCollector extends UsageProviderAdapter {
     return this.finalizeScan(filePath, parserState, result, reason, sink.counters);
   }
 
-  async reconcile(reason = 'interval') {
-    try {
-      await this.detect();
-      if (!this.status.detected) return { changed: false, files: 0 };
-      const files = await this.discoverFiles();
-      let changed = false;
-      for (const filePath of files) {
-        const result = await this.scanFile(filePath, reason);
-        changed ||= Boolean(result?.changed);
+  reconcile(reason = 'interval') {
+    return this.guardedReconcile(async () => {
+      try {
+        await this.detect();
+        if (!this.status.detected) return { changed: false, files: 0 };
+        const files = await this.discoverFiles();
+        let changed = false;
+        for (const filePath of files) {
+          const result = await this.scanFile(filePath, reason);
+          changed ||= Boolean(result?.changed);
+        }
+        await this.refreshWatchers();
+        this.status.lastScanAt = new Date().toISOString();
+        this.status.lastError = null;
+        return { changed, files: files.length };
+      } catch (error) {
+        this.status.lastError = String(error?.message ?? error);
+        this.emit('error-state', { provider: 'codex', error: this.status.lastError });
+        return { changed: false, error: this.status.lastError };
       }
-      await this.refreshWatchers();
-      this.status.lastScanAt = new Date().toISOString();
-      this.status.lastError = null;
-      return { changed, files: files.length };
-    } catch (error) {
-      this.status.lastError = String(error?.message ?? error);
-      this.emit('error-state', { provider: 'codex', error: this.status.lastError });
-      return { changed: false, error: this.status.lastError };
-    }
+    });
   }
 
   async refreshWatchers() {

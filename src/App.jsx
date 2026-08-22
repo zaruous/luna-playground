@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import CatArt from './CatArt.jsx';
 import { createUsageClient } from './usage-client.js';
-import { catThemes, connectionState, measurementPending } from './shared.js';
+import { catThemes, connectionState, hookProviderIds, measurementPending } from './shared.js';
 import DashboardView from './views/DashboardView.jsx';
 import UsageView from './views/UsageView.jsx';
 import ProjectView from './views/ProjectView.jsx';
@@ -27,8 +27,8 @@ function NavIcon({ type }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[type]}</svg>;
 }
 
-// hook 가속 경로를 지원하는 provider. 어댑터가 생길 땐 여기에 더합니다.
-const HOOK_PROVIDERS = ['codex', 'claude'];
+// hook 가속 경로를 지원하는 provider 목록은 스냅샷 capabilities 에서
+// 뽑습니다 — hookProviderIds() 참고.
 
 function App() {
   // 화면 이동은 view 와 함게 **포커스 인자**를 나릅니다. URL 을 쓰지 않는
@@ -70,6 +70,7 @@ function App() {
   // UI 틀 자체는 이 값과 무관하게 즉시 그려집니다 — 뼈대를 기다리게 하면
   // 서버가 포트를 먼저 연 이점이 화면에서 사라집니다.
   const pending = measurementPending(snapshot);
+  const hookTargets = useMemo(() => hookProviderIds(snapshot), [snapshot]);
 
   useEffect(() => {
     window.localStorage.setItem('nyangtracker-cat-theme', catTheme);
@@ -84,14 +85,21 @@ function App() {
       .then((value) => { if (active) { setSnapshot(value); setConnectionError(null); } })
       .catch((error) => { if (active) setConnectionError(error); });
 
-    for (const providerId of HOOK_PROVIDERS) {
-      api.hooks?.(providerId).getHookStatus()
+    return () => { active = false; };
+  }, [api]);
+
+  useEffect(() => {
+    if (!api?.hooks || !hookTargets.length) return undefined;
+    let active = true;
+
+    for (const providerId of hookTargets) {
+      api.hooks(providerId).getHookStatus()
         .then((value) => { if (active) setHookStatuses((current) => ({ ...current, [providerId]: value })); })
         .catch((error) => { if (active) setConnectionError(error); });
     }
 
     return () => { active = false; };
-  }, [api]);
+  }, [api, hookTargets]);
 
   // 401 은 프로세스 토큰이 무효화된 상태라 SSE 재연결이 영원히 401 만 받습니다.
   // snapshot 이 먼저 실패하면 구독을 열지 않고, 이미 열린 뒤 401 이 오면 닫습니다.

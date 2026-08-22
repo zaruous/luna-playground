@@ -1250,10 +1250,25 @@ export class UsageStore {
 
   // ---- M8 세션 흐름 계층 ------------------------------------------------
   // 턴 경계는 관측 사실이라 그대로 저장하고, 토큰 집계는 usage_events 에서
-  // 뽑습니다. 같은 턴을 다시 관측해도 값이 같으므로 멱등합니다.
+  // 뽑습니다. 되감기 때 같은 경계를 다시 쓰면 화면에 영향을 주는 필드가
+  // 같으므로 changed 는 false — parser_version·updated_at 만 바뀌는 UPDATE 는
+  // 스냅샷 브로드캐스트를 일으키지 않게 건너뜁니다(R2-a).
   upsertTurn({ provider, sessionId, turnIndex, startedAt = null, compacted = false, parserVersion = null }) {
     const providerId = normalizeProviderId(provider);
     if (!sessionId || !Number.isInteger(turnIndex)) throw new TypeError('turn requires sessionId and integer turnIndex');
+    const existing = this.db.prepare(`
+      SELECT started_at, compacted FROM turns
+      WHERE provider = ? AND session_id = ? AND turn_index = ?
+    `).get(providerId, sessionId, turnIndex);
+    const nextCompacted = existing ? Math.max(existing.compacted, compacted ? 1 : 0) : (compacted ? 1 : 0);
+    const nextStartedAt = existing?.started_at ?? startedAt ?? null;
+    if (existing) {
+      const sameStartedAt = nextStartedAt === (existing.started_at ?? null);
+      const sameCompacted = nextCompacted === existing.compacted;
+      if (sameStartedAt && sameCompacted) {
+        return { changed: false, inserted: false, updated: false };
+      }
+    }
     this.db.prepare(`
       INSERT INTO turns (provider, session_id, turn_index, started_at, compacted, parser_version, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1262,7 +1277,10 @@ export class UsageStore {
         compacted = MAX(turns.compacted, excluded.compacted),
         parser_version = excluded.parser_version,
         updated_at = excluded.updated_at
-    `).run(providerId, sessionId, turnIndex, startedAt, compacted ? 1 : 0, parserVersion, isoNow());
+    `).run(providerId, sessionId, turnIndex, nextStartedAt, nextCompacted, parserVersion, isoNow());
+    return existing
+      ? { changed: true, inserted: false, updated: true }
+      : { changed: true, inserted: true, updated: false };
   }
 
   // 파일을 처음부터 다시 읽을 때(절단/교체) 그 세션의 턴 경계를 지웁니다.

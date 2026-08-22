@@ -420,6 +420,15 @@ export function buildChartColumns(bucketRows = []) {
     });
 }
 
+// hook 설치 상태를 당길 provider 목록. DashboardView·BudgetView 와 같은
+// 기준(capabilities.hooks)을 씁니다 — id 배열을 App.jsx 에 하드코딩하면
+// 새 hook provider 가 화면엔 보이는데 상태는 영원히 미확인으로 남습니다(E-1).
+export function hookProviderIds(snapshot) {
+  const providers = snapshot?.providers;
+  if (!Array.isArray(providers) || !providers.length) return [];
+  return providers.filter((item) => item.capabilities?.hooks).map((item) => item.id);
+}
+
 export function connectionState({ error = null } = {}) {
   if (!error) {
     return { kind: 'live', message: null };

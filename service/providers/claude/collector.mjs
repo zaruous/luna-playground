@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { UsageProviderAdapter } from '../contracts.mjs';
+import { UsageProviderAdapter, createReconcileGuard } from '../contracts.mjs';
 import { accountingOf } from '../accounting.mjs';
 import { readCompleteLines } from '../jsonl-tail.mjs';
 import { applyParserTail } from '../../scan-pool.mjs';
@@ -56,6 +56,7 @@ export class ClaudeCollector extends UsageProviderAdapter {
     this.watchers = new Map();
     this.scanInFlight = new Map();
     this.reconcileTimer = null;
+    this.guardedReconcile = createReconcileGuard();
     this.status = {
       provider: 'claude',
       detected: false,
@@ -180,9 +181,8 @@ export class ClaudeCollector extends UsageProviderAdapter {
             this.store.upsertSession(event.session, filePath, observedAt);
           } else if (event.type === 'turn') {
             // 턴 경계는 사실이라 그대로 씁니다. 토큰은 여기 담지 않습니다.
-            this.store.upsertTurn(event);
             counters.turnEvents += 1;
-            counters.changed = true;
+            if (this.store.upsertTurn(event).changed) counters.changed = true;
           } else if (event.type === 'usage') {
             // Claude 는 같은 요청이 여러 줄로 나뉘고 resume 시 파일이 복사되므로
             // insert 가 아니라 요청 단위 upsert 입니다(R1 last-wins).
@@ -279,25 +279,27 @@ export class ClaudeCollector extends UsageProviderAdapter {
     return this.finalizeScan(filePath, parserState, result, reason, sink.counters);
   }
 
-  async reconcile(reason = 'interval') {
-    try {
-      await this.detect();
-      if (!this.status.detected) return { changed: false, files: 0 };
-      const files = await this.discoverFiles();
-      let changed = false;
-      for (const filePath of files) {
-        const result = await this.scanFile(filePath, reason);
-        changed ||= Boolean(result?.changed);
+  reconcile(reason = 'interval') {
+    return this.guardedReconcile(async () => {
+      try {
+        await this.detect();
+        if (!this.status.detected) return { changed: false, files: 0 };
+        const files = await this.discoverFiles();
+        let changed = false;
+        for (const filePath of files) {
+          const result = await this.scanFile(filePath, reason);
+          changed ||= Boolean(result?.changed);
+        }
+        await this.refreshWatchers(files);
+        this.status.lastScanAt = new Date().toISOString();
+        this.status.lastError = null;
+        return { changed, files: files.length };
+      } catch (error) {
+        this.status.lastError = String(error?.message ?? error);
+        this.emit('error-state', { provider: 'claude', error: this.status.lastError });
+        return { changed: false, error: this.status.lastError };
       }
-      await this.refreshWatchers(files);
-      this.status.lastScanAt = new Date().toISOString();
-      this.status.lastError = null;
-      return { changed, files: files.length };
-    } catch (error) {
-      this.status.lastError = String(error?.message ?? error);
-      this.emit('error-state', { provider: 'claude', error: this.status.lastError });
-      return { changed: false, error: this.status.lastError };
-    }
+    });
   }
 
   // transcript 가 실제로 들어 있는 디렉터리만 감시합니다. projects 아래를 전부

@@ -15,6 +15,60 @@ import { accountingOf, promptSideTokens } from './providers/accounting.mjs';
 // snapshot() 은 집계 쿼리 묶음입니다. 백필 중에 파일마다 부르면 스냅샷 쪽이
 // 스캔보다 비싸지므로, 진행 알림은 시간으로 조입니다.
 const WARMUP_EMIT_INTERVAL_MS = 1000;
+const DEFAULT_READY_EMIT_INTERVAL_MS = 1000;
+
+// ready 구간 SSE 는 되감기 때 턴·사용량 이벤트가 연속으로 올라옵니다. 즉시
+// 매번 snapshot() 을 부르면 집계가 스캔을 압도하므로 warmup 과 같은 trailing
+// 스로틀을 씁니다 — 창 안의 마지막 변경은 반드시 한 번은 나갑니다(R2-b).
+export function createTrailingEmitThrottle({
+  intervalMs,
+  now = () => Date.now(),
+  schedule = (fn, delayMs) => setTimeout(fn, delayMs),
+  cancelTimer = clearTimeout,
+} = {}) {
+  if (!Number.isFinite(intervalMs) || intervalMs < 0) throw new TypeError('intervalMs is required');
+  let lastEmitAt = 0;
+  let timer = null;
+  let pendingRun = null;
+
+  const clearTimer = () => {
+    if (timer != null) {
+      cancelTimer(timer);
+      timer = null;
+    }
+  };
+
+  const flush = () => {
+    clearTimer();
+    const run = pendingRun;
+    pendingRun = null;
+    if (!run) return false;
+    lastEmitAt = now();
+    run();
+    return true;
+  };
+
+  const request = (run) => {
+    pendingRun = run;
+    const elapsed = now() - lastEmitAt;
+    if (elapsed >= intervalMs) {
+      flush();
+      return;
+    }
+    clearTimer();
+    timer = schedule(() => {
+      timer = null;
+      flush();
+    }, intervalMs - elapsed);
+  };
+
+  const cancel = () => {
+    clearTimer();
+    pendingRun = null;
+  };
+
+  return { request, flush, cancel, hasPending: () => pendingRun != null };
+}
 
 function emptyWarmupState() {
   return {
@@ -75,7 +129,16 @@ function flattenQuotaWindows(rateLimits) {
 }
 
 export class UsageEngine extends EventEmitter {
-  constructor({ userDataPath, codexHome, claudeHomes, geminiHomes } = {}) {
+  constructor({
+    userDataPath,
+    codexHome,
+    claudeHomes,
+    geminiHomes,
+    readyEmitIntervalMs = DEFAULT_READY_EMIT_INTERVAL_MS,
+    now = Date.now,
+    scheduleReadyEmit = (fn, delayMs) => setTimeout(fn, delayMs),
+    cancelReadyEmit = clearTimeout,
+  } = {}) {
     super();
     this.userDataPath = userDataPath;
     this.store = new UsageStore(path.join(userDataPath, 'usage.sqlite3'));
@@ -96,6 +159,12 @@ export class UsageEngine extends EventEmitter {
     this.warmupTask = null;
     this.warmupPool = null;
     this.lastWarmupEmitAt = 0;
+    this.readyEmitThrottle = createTrailingEmitThrottle({
+      intervalMs: readyEmitIntervalMs,
+      now,
+      schedule: scheduleReadyEmit,
+      cancelTimer: cancelReadyEmit,
+    });
     this.lastHookAt = new Map();
     this.providerRegistry.on('updated', (event) => this.#emitUpdate(event));
     this.providerRegistry.on('hook', (event) => {
@@ -165,6 +234,7 @@ export class UsageEngine extends EventEmitter {
   // 적재를 멈추되 스토어는 열어 둡니다. stop() 과 초기화가 공유하는 부분이고,
   // 초기화는 원장을 비운 뒤 다시 스캔해야 하므로 연결을 닫을 수 없습니다.
   async #quiesce() {
+    this.readyEmitThrottle.cancel();
     await this.warmupPool?.close().catch(() => {});
     this.warmupPool = null;
     this.providerRegistry.stopAll();
@@ -380,7 +450,17 @@ export class UsageEngine extends EventEmitter {
       this.#emitWarmup(false);
       return;
     }
-    const snapshot = this.snapshot();
-    this.emit('snapshot', snapshot, event);
+    // 초기화·오류는 사용자가 즉시 알아야 하므로 스로틀 밖입니다. rescan() 은
+    // 이 경로를 거치지 않고 바로 emit 합니다 — 수동 동작이 묵살되면 안 됩니다.
+    if (event?.type === 'reset' || event?.type === 'error-state') {
+      this.readyEmitThrottle.cancel();
+      const snapshot = this.snapshot();
+      this.emit('snapshot', snapshot, event);
+      return;
+    }
+    this.readyEmitThrottle.request(() => {
+      const snapshot = this.snapshot();
+      this.emit('snapshot', snapshot, event);
+    });
   }
 }

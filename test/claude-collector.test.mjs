@@ -354,3 +354,54 @@ test('tool-results 디렉터리는 아예 읽지 않는다', async () => {
     env.dispose();
   }
 });
+
+test('reconcile 는 겹친 패스를 합치고 실패 뒤에도 다시 돈다', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-claude-reconcile-guard-'));
+  const claudeHome = path.join(root, '.claude');
+  fs.mkdirSync(path.join(claudeHome, 'projects'), { recursive: true });
+  const store = new UsageStore(path.join(root, 'usage.sqlite3'));
+  const collector = new ClaudeCollector({ store, claudeHomes: [claudeHome] });
+  try {
+    await collector.detect();
+    assert.equal(collector.getStatus().detected, true);
+
+    let discoverCalls = 0;
+    let releaseDiscover;
+    let discoverEntered;
+    const discoverGate = new Promise((resolve) => { discoverEntered = resolve; });
+    collector.discoverFiles = async () => {
+      discoverCalls += 1;
+      discoverEntered();
+      await new Promise((resolve) => { releaseDiscover = resolve; });
+      return [];
+    };
+    collector.refreshWatchers = async () => {};
+
+    const first = collector.reconcile('overlap-a');
+    const second = collector.reconcile('overlap-b');
+    await discoverGate;
+    assert.equal(first, second);
+    assert.equal(discoverCalls, 1);
+
+    releaseDiscover();
+    await first;
+
+    discoverCalls = 0;
+    collector.discoverFiles = async () => { discoverCalls += 1; return []; };
+    await collector.reconcile('after-first');
+    assert.equal(discoverCalls, 1);
+
+    collector.discoverFiles = async () => { throw new Error('discover failed'); };
+    const failed = await collector.reconcile('fail');
+    assert.match(failed.error, /discover failed/);
+
+    discoverCalls = 0;
+    collector.discoverFiles = async () => { discoverCalls += 1; return []; };
+    await collector.reconcile('recover');
+    assert.equal(discoverCalls, 1);
+  } finally {
+    collector.stop();
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

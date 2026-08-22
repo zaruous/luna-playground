@@ -9,6 +9,23 @@ export const PROVIDER_CATALOG = Object.freeze([
 
 const REQUIRED_METHODS = ['start', 'stop', 'reconcile', 'getStatus'];
 
+// reconcile 패스가 겹치면 discoverFiles·refreshWatchers 가 중복 실행됩니다.
+// hook → scanFile 경로는 가드 밖에 둡니다 — 즉시 반응해야 하는 별도 신호입니다.
+export function createReconcileGuard() {
+  let inFlight = null;
+  return function runGuardedReconcile(runPass) {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        return await runPass();
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+}
+
 export function assertProviderAdapter(adapter) {
   if (!adapter || typeof adapter !== 'object') throw new TypeError('Provider adapter is required');
   if (!adapter.id || typeof adapter.id !== 'string') throw new TypeError('Provider adapter id is required');
