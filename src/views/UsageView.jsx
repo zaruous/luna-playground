@@ -5,7 +5,7 @@ import {
   buildChartColumns, buildProviderTokenSplits, decomposeTokens, formatTokens, formatPercent,
   qualityBadge, qualityFieldSummary, PENDING_LABEL, resolvePeriodBreakdown,
   sumTokenFields, tokenCategories, tokensText,
-  geminiSourceState, geminiTokensBlocked,
+  geminiSourceState, geminiTokensBlocked, providerUnavailable,
 } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
@@ -164,7 +164,8 @@ export default function UsageView({ snapshot, api, pending = false }) {
             type="button"
             key={provider.id}
             className={`chip-button ${providerFilter === provider.id ? 'primary' : ''}`}
-            disabled={(provider.allTimeTotals?.eventCount ?? 0) === 0}
+            disabled={Boolean(providerUnavailable(provider))}
+            title={providerUnavailable(provider)?.detail ?? undefined}
             onClick={() => setProviderFilter(provider.id)}
           >{provider.name}</button>
         ))}

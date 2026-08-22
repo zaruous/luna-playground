@@ -4,7 +4,8 @@ import { promptSideTokens } from '../service/providers/accounting.mjs';
 import {
   buildChartColumns, buildProviderTokenSplits, cacheHitPercent, connectionState, decomposeTokens,
   featuredQuotaWindow, formatPercent, geminiProviderActivityLabel, geminiSourceState, geminiTokensBlocked,
-  hookProviderIds, providerQuotaWindows, resolvePeriodBreakdown,
+  hookProviderIds, providerQuotaWindows, resolvePeriodBreakdown, providerUnavailable,
+  unavailableNotice, collectorSourceLine,
   sumTokenFields, serverQuotaState,
 } from '../src/shared.js';
 
@@ -367,4 +368,82 @@ test('geminiSourceState 는 둘 다 없으면 미설치다', () => {
     collector: { sources: { legacyChats: { present: false }, antigravity: { present: false } } },
   };
   assert.equal(geminiSourceState(empty).kind, 'not-installed');
+});
+
+test('고를 수 없는 provider 는 왜 못 고르는지를 각자 다르게 말한다', () => {
+  const mk = (over) => ({
+    id: 'gemini', name: 'Gemini', integration: 'connected',
+    allTimeTotals: { eventCount: 0, totalTokens: 0 },
+    collector: { detected: true, sources: {
+      legacyChats: { present: false, roots: [], files: 0 },
+      antigravity: { present: false, conversations: 0, lastActivityAt: null },
+    } },
+    ...over,
+  });
+
+  // 데이터가 있으면 고를 수 있습니다.
+  assert.equal(providerUnavailable(mk({ allTimeTotals: { eventCount: 12, totalTokens: 100 } })), null);
+
+  // Cursor 는 어댑터가 없는 것 — 끝난 상태입니다.
+  const planned = providerUnavailable({ id: 'cursor', name: 'Cursor', integration: 'planned' });
+  assert.equal(planned.kind, 'planned');
+
+  // agy 는 **지금도 도는데** 못 재는 것입니다. 둘이 같은 문구면 화면이 둘을
+  // 구별하지 못하고, 그게 이 헬퍼가 존재하는 이유입니다.
+  const agy = providerUnavailable(mk({ collector: { detected: true, sources: {
+    legacyChats: { present: false, roots: [], files: 0 },
+    antigravity: { present: true, conversations: 1, lastActivityAt: '2026-08-22T02:27:18.000Z' },
+  } } }));
+  assert.equal(agy.kind, 'agy-unmeasured');
+  assert.notEqual(agy.detail, planned.detail, '준비 중과 같은 설명을 쓰면 안 됩니다');
+  assert.match(agy.detail, /쓰지 않아서 비어 있는 것이 아닙니다/, '안 썼다로 읽히지 않게 못박습니다');
+
+  // 옛 기록만 남고 원본이 사라진 경우도 갈라집니다.
+  const gone = providerUnavailable(mk({ allTimeTotals: { eventCount: 0, totalTokens: 9876 } }));
+  assert.equal(gone.kind, 'source-gone');
+});
+
+test('안내 한 줄은 준비 중 provider 로 화면을 어지럽히지 않는다', () => {
+  // Cursor 는 "아직 안 만들었다" 이고 그건 사용자가 할 수 있는 게 없습니다.
+  // 빈 상태에서까지 말하면 소음입니다.
+  const notice = unavailableNotice([
+    { id: 'cursor', name: 'Cursor', integration: 'planned' },
+    { id: 'codex', name: 'Codex', integration: 'connected', allTimeTotals: { eventCount: 5 } },
+  ]);
+  assert.equal(notice, null);
+
+  const withAgy = unavailableNotice([
+    { id: 'cursor', name: 'Cursor', integration: 'planned' },
+    { id: 'gemini', name: 'Gemini', integration: 'connected', allTimeTotals: { eventCount: 0 },
+      collector: { detected: true, sources: {
+        legacyChats: { present: false, roots: [], files: 0 },
+        antigravity: { present: true, conversations: 1, lastActivityAt: null },
+      } } },
+  ]);
+  assert.match(withAgy, /Gemini/);
+  assert.doesNotMatch(withAgy, /Cursor/);
+});
+
+test('수집 원본 한 줄은 원본이 어디로 옮겨갔는지 말한다', () => {
+  const agyOnly = collectorSourceLine({ collector: { sources: {
+    legacyChats: { present: false, files: 0 },
+    antigravity: { present: true, conversations: 3, lastActivityAt: '2026-08-22T02:27:18.000Z' },
+  } } });
+  assert.match(agyOnly, /agy 대화 3개/);
+  assert.doesNotMatch(agyOnly, /Gemini CLI 세션/, '없는 원본을 있다고 하면 안 됩니다');
+
+  const both = collectorSourceLine({ collector: { sources: {
+    legacyChats: { present: true, files: 807 },
+    antigravity: { present: true, conversations: 1, lastActivityAt: null },
+  } } });
+  assert.match(both, /Gemini CLI 세션 807개/);
+  assert.match(both, /agy 대화 1개/);
+
+  // 둘 다 없으면 침묵하지 않고 못 찾았다고 말합니다(R7).
+  assert.match(collectorSourceLine({ collector: { sources: {
+    legacyChats: { present: false, files: 0 }, antigravity: { present: false, conversations: 0 },
+  } } }), /찾지 못했습니다/);
+
+  // sources 를 안 주는 provider(codex·claude)는 null 이라 줄이 안 생깁니다.
+  assert.equal(collectorSourceLine({ collector: { detected: true } }), null);
 });

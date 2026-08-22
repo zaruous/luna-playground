@@ -478,6 +478,83 @@ export function geminiTokensBlocked(provider) {
   return Boolean(state && state.kind !== 'legacy-observed');
 }
 
+// "이 provider 를 왜 못 고르나" 에 대한 한 곳짜리 답.
+//
+// 세 화면(AI 사용량·세션 흐름·동기화)이 같은 질문을 각자 다르게 답하고 있었고,
+// 그래서 **뜻이 정반대인 두 상태가 같은 회색 칩**으로 보였습니다 — Cursor 는
+// 어댑터가 없는 것이고, agy 는 지금도 도는데 토큰만 못 재는 것입니다.
+// 고를 수 있으면 null 입니다.
+export function providerUnavailable(provider) {
+  if (!provider) return null;
+  if (provider.integration !== 'connected') {
+    return {
+      kind: 'planned',
+      short: '준비 중',
+      detail: `${provider.name ?? '이 provider'} 어댑터가 아직 없습니다. 로그를 읽지 않으므로 고를 값도 없습니다.`,
+    };
+  }
+  if ((provider.allTimeTotals?.eventCount ?? 0) > 0) return null;
+
+  // 감지는 됐는데 원장이 비어 있는 경우. 이유가 provider 마다 다르므로
+  // 뭉뚱그리지 않습니다 — 뭉뚱그리면 "안 썼다" 로 읽힙니다(R7).
+  const gemini = geminiSourceState(provider);
+  if (gemini?.kind === 'agy-unmeasured') {
+    return {
+      kind: 'agy-unmeasured',
+      short: '토큰 회계 미확립',
+      detail: `${gemini.label} — ${gemini.detail} 쓰지 않아서 비어 있는 것이 아닙니다.`,
+    };
+  }
+  if (gemini?.kind === 'legacy-gone') {
+    return {
+      kind: 'source-gone',
+      short: '원본 로그 없음',
+      detail: `${gemini.label} — ${gemini.detail}`,
+    };
+  }
+  if (provider.collector?.detected) {
+    return {
+      kind: 'detected-empty',
+      short: '관측 기록 없음',
+      detail: `${provider.name ?? '이 provider'} 로그는 찾았지만 아직 관측된 사용량이 없습니다.`,
+    };
+  }
+  return {
+    kind: 'not-detected',
+    short: '로그 미발견',
+    detail: `${provider.name ?? '이 provider'} 로그 디렉터리를 찾지 못했습니다.`,
+  };
+}
+
+// 수집기가 실제로 무엇을 보고 있는지 한 줄로. 동기화 화면은 수집 신뢰성을
+// 담당하는데, 원본이 어디로 옮겨갔는지를 말하지 않으면 그 역할을 못 합니다.
+export function collectorSourceLine(provider) {
+  const sources = provider?.collector?.sources;
+  if (!sources) return null;
+  const parts = [];
+  const legacy = sources.legacyChats;
+  const agy = sources.antigravity;
+  if (legacy?.present) parts.push(`Gemini CLI 세션 ${legacy.files ?? 0}개`);
+  if (agy?.present) {
+    const when = agy.lastActivityAt ? ` · 마지막 활동 ${new Date(agy.lastActivityAt).toLocaleDateString('ko-KR')}` : '';
+    parts.push(`agy 대화 ${agy.conversations ?? 0}개${when}`);
+  }
+  if (!parts.length) return '읽을 수 있는 원본을 찾지 못했습니다.';
+  return parts.join(' · ');
+}
+
+// 화면 하단에 한 줄로 붙일 안내. 고를 수 없는 provider 가 **왜** 그런지 말합니다.
+// 아무도 문제 없으면 null 이라 화면이 조용합니다.
+export function unavailableNotice(providers = []) {
+  const blocked = providers
+    .map((provider) => ({ provider, reason: providerUnavailable(provider) }))
+    .filter((entry) => entry.reason && entry.reason.kind !== 'planned');
+  if (!blocked.length) return null;
+  return blocked
+    .map((entry) => `${entry.provider.name}: ${entry.reason.detail}`)
+    .join(' · ');
+}
+
 export function geminiProviderActivityLabel(provider, options) {
   const state = geminiSourceState(provider);
   if (state && state.kind !== 'legacy-observed') return state.label;

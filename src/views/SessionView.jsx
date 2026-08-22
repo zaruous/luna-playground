@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TableHead, ViewHead, sortRows, useSlowStamp, useTableSort } from './Bits.jsx';
-import { formatTokens, formatPercent, relativeTime, phaseLabel, PENDING_LABEL, tokensText } from '../shared.js';
+import {
+  formatTokens, formatPercent, relativeTime, phaseLabel, PENDING_LABEL, tokensText,
+  providerUnavailable, unavailableNotice,
+} from '../shared.js';
 
 const PERIODS = [
   { id: 'month', label: '이번 달' },
@@ -93,6 +96,9 @@ function ContextCurve({ curve }) {
 
 export default function SessionView({ snapshot, api, focus, pending = false, onNavigate }) {
   const providers = snapshot?.providers ?? [];
+  // 고를 수 없는 provider 가 있으면 그 이유를 빈 상태에서 대신 말합니다 — 칩이
+  // 잠겨 있는데 "필터를 확인해 보세요" 라고 하면 할 수 있는 게 없습니다.
+  const blockedNotice = unavailableNotice(providers);
   const [period, setPeriod] = useState('month');
   const [providerFilter, setProviderFilter] = useState('all');
   const [sessions, setSessions] = useState(null);
@@ -192,7 +198,8 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
             // 스냅샷의 totals 는 이번 달 창이라, 그것으로 잠그면 지난달까지만
             // 쓰던 provider 는 기간을 넓혀도 영영 고를 수 없습니다 — Gemini 에서
             // 실제로 그랬습니다(전체 기간에 9.8억 토큰인데 칩이 잠겨 있었음).
-            disabled={(provider.allTimeTotals?.eventCount ?? 0) === 0}
+            disabled={Boolean(providerUnavailable(provider))}
+            title={providerUnavailable(provider)?.detail ?? undefined}
             onClick={() => setProviderFilter(provider.id)}
           >{provider.name}</button>
         ))}
@@ -264,8 +271,11 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
               </div>
             )) : (
               <div className="empty-projects">
-                <strong>{pending ? PENDING_LABEL : "이 기간에 관측된 세션이 없어요."}</strong>
-                <span>기간을 넓히거나 provider 필터를 확인해 보세요.</span>
+                <strong>{pending ? PENDING_LABEL : '이 기간에 관측된 세션이 없어요.'}</strong>
+                {/* "기간을 넓히거나 필터를 확인해 보세요" 는 고를 수 없는 provider 에게는
+                    소용없는 안내입니다 — 칩이 잠겨 있어 필터를 켤 수도 없습니다.
+                    그런 provider 가 있으면 이유를 대신 말합니다. */}
+                <span>{blockedNotice ?? '기간을 넓히거나 provider 필터를 확인해 보세요.'}</span>
               </div>
             )}
           </div>

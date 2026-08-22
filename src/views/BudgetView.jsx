@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ViewHead, MilestonePill, useSlowStamp } from './Bits.jsx';
 import QuotaHistory from './QuotaHistory.jsx';
-import { providerMilestones, formatTokens, formatPercent, relativeTime, quotaLabel, resetLabel } from '../shared.js';
+import {
+  providerMilestones, formatTokens, formatPercent, relativeTime, quotaLabel, resetLabel,
+  providerUnavailable, collectorSourceLine,
+} from '../shared.js';
 
 const reconcileMeta = {
   MATCHED_ACTIVITY: { label: '서버·로컬 동시 증가', tone: 'pill-good' },
@@ -35,6 +38,14 @@ function providerState(provider) {
     return { pill: 'pill-good', text: '연결됨', detail: `${collector.filesDiscovered ?? 0}개 파일 · 감시 중` };
   }
   if (collector.detected) {
+    // 'reconcile 대기' 는 **곧 연결된다**는 뜻입니다. watching 은 watcher 가 하나라도
+    // 붙었을 때 참인데, 감시할 경로 자체가 없으면 그 날은 오지 않습니다 — 실측에서
+    // Gemini 가 watcherCount 0 으로 이 자리에 영구히 머물렀습니다. 끝난 상태를
+    // 기다리는 상태처럼 적는 것은 지킬 수 없는 약속입니다.
+    const reason = providerUnavailable(provider);
+    if (reason && reason.kind !== 'planned' && (collector.filesDiscovered ?? 0) === 0) {
+      return { pill: 'pill-warm', text: '감지됨', detail: reason.short, title: reason.detail };
+    }
     return { pill: 'pill-warm', text: '감지됨', detail: 'reconcile 대기' };
   }
   return { pill: 'pill-warm', text: '미발견', detail: '로그 디렉터리를 찾지 못함' };
@@ -71,10 +82,13 @@ export default function BudgetView({ snapshot, hookStatuses, api, actionBusy, on
           {providers.map((provider) => {
             const state = providerState(provider);
             const lastScan = provider.collector?.lastScanAt;
+            const sourceLine = collectorSourceLine(provider);
             return (
               <article className="panel provider-card" key={provider.id}>
                 <div className="provider-card-head"><h2>{provider.name}</h2><span className={`status-pill ${state.pill}`}>{state.text}</span></div>
-                <p className="provider-card-detail">{state.detail}</p>
+                <p className="provider-card-detail" title={state.title ?? undefined}>{state.detail}</p>
+                {/* 원본이 어디로 옮겨갔는지 — 수집 신뢰성 화면의 본업입니다. */}
+                {sourceLine ? <small className="provider-card-sub">{sourceLine}</small> : null}
                 <small className="provider-card-sub">{provider.integration === 'connected' ? `마지막 스캔: ${lastScan ? relativeTime(lastScan) : '기록 없음'}` : '설계: docs/dev/provider-token-api.md'}</small>
               </article>
             );
