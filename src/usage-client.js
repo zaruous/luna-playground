@@ -97,6 +97,11 @@ export function createUsageClient(config, {
     sessions: {
       list: (params = {}) => request(`/sessions?${new URLSearchParams(clean(params))}`),
       flow: (sessionId, params = {}) => request(`/sessions/${encodeURIComponent(sessionId)}/flow?${new URLSearchParams(clean(params))}`),
+      // 턴 상세는 파일을 다시 읽는 무거운 호출이라, 사람이 그 턴을 열었을
+      // 때만 부릅니다 — 목록을 그릴 때 미리 당기지 않습니다.
+      turnDetail: (sessionId, turnIndex, params = {}) => request(
+        `/sessions/${encodeURIComponent(sessionId)}/turns/${Number(turnIndex) || 0}/detail?${new URLSearchParams(clean(params))}`,
+      ),
     },
     projects: {
       list: (params = {}) => request(`/projects?${new URLSearchParams(clean(params))}`),

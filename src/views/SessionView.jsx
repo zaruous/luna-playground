@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TableHead, ViewHead, sortRows, useSlowStamp, useTableSort } from './Bits.jsx';
+import TurnDetail from './TurnDetail.jsx';
 import {
   formatTokens, formatPercent, relativeTime, phaseLabel, PENDING_LABEL, tokensText,
   providerUnavailable, unavailableNotice,
@@ -34,8 +35,9 @@ const TURN_COLUMNS = [
   { key: 'requestCount', label: '요청', type: 'number' },
   { key: 'phase', label: '단계', type: 'text' },
   { key: 'toolCounts', label: '도구', sortable: false },
+  { key: 'detail', label: '상세', sortable: false },
 ];
-const turnColumnTemplate = '.5fr .7fr .8fr .5fr .6fr 1.6fr';
+const turnColumnTemplate = '.5fr .7fr .8fr .5fr .6fr 1.6fr .4fr';
 
 // 기간 경계는 로컬 시간대로 만듭니다 — 스토어도 'localtime'으로 끊습니다.
 function sinceFor(period) {
@@ -105,6 +107,9 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
   const [selected, setSelected] = useState(null);
   const [flow, setFlow] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  // 펼친 턴. 상세는 원본 파일을 다시 읽는 무거운 호출이라 한 번에 하나만
+  // 엽니다 — 여러 개를 동시에 펼치면 같은 파일을 그만큼 다시 읽습니다.
+  const [openTurn, setOpenTurn] = useState(null);
 
   // 스냅샷 시각을 그대로 쓰면 SSE 가 밀어대는 동안 요청이 계속 취소됩니다.
   const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
@@ -149,6 +154,10 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
       .catch(() => { if (active) setFlow(null); });
     return () => { active = false; };
   }, [api, activeSession?.sessionId, activeSession?.provider, stamp]);
+
+  // 세션을 바꾸면 펼침을 닫습니다. 턴 번호는 세션마다 다시 1부터라, 그대로
+  // 두면 다른 세션의 같은 번호 턴이 열려 있는 것처럼 보입니다.
+  useEffect(() => { setOpenTurn(null); }, [activeSession?.sessionId, activeSession?.provider]);
 
   const summary = useMemo(() => {
     if (!list.length) return null;
@@ -323,7 +332,7 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
               <div className="panel-head">
                 <div>
                   <h2>비싼 턴 <span>••</span></h2>
-                  <p className="panel-sub">토큰 상위 {topTurns.length}개 · 턴 = 사람 프롬프트 1개 ~ 다음 프롬프트까지 · 프롬프트 본문은 저장하지 않습니다</p>
+                  <p className="panel-sub">토큰 상위 {topTurns.length}개 · 턴 = 사람 프롬프트 1개 ~ 다음 프롬프트까지 · <strong>행을 누르면</strong> 그 턴이 무엇에 썼는지 아래에 펼쳐집니다</p>
                 </div>
                 <span className="filter-note">
                   턴 {flow.session.turnCount}개 · 요청 {flow.session.requestCount.toLocaleString('ko-KR')}개
@@ -332,13 +341,35 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
               <div className="table-wrap">
                 <TableHead columns={TURN_COLUMNS} sort={turnSort} onSort={toggleTurnSort} style={{ gridTemplateColumns: turnColumnTemplate }} />
                 {expensiveTurns.map((turn) => (
-                  <div className="table-row" role="row" key={turn.turnIndex} style={{ gridTemplateColumns: turnColumnTemplate }}>
-                    <strong>{turn.boundary ? turn.turnIndex : '—'}</strong>
-                    <span>{turn.startedAt ? new Date(turn.startedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
-                    <strong>{formatTokens(turn.totalTokens)}</strong>
-                    <span>{turn.requestCount}</span>
-                    <span>{phaseLabel(turn.phase)}{turn.compacted ? ' · 컴팩션' : ''}</span>
-                    <span className="turn-tools">{turn.boundary ? topTools(turn.toolCounts) : '경계 미확인 (서브에이전트 등)'}</span>
+                  <div key={turn.turnIndex}>
+                    <div
+                      className={`table-row turn-row ${openTurn === turn.turnIndex ? 'is-open' : ''}`}
+                      role="row"
+                      style={{ gridTemplateColumns: turnColumnTemplate }}
+                      onClick={() => setOpenTurn((current) => (current === turn.turnIndex ? null : turn.turnIndex))}
+                    >
+                      <strong>{turn.boundary ? turn.turnIndex : '—'}</strong>
+                      <span>{turn.startedAt ? new Date(turn.startedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
+                      <strong>{formatTokens(turn.totalTokens)}</strong>
+                      <span>{turn.requestCount}</span>
+                      <span>{phaseLabel(turn.phase)}{turn.compacted ? ' · 컴팩션' : ''}</span>
+                      <span className="turn-tools">{turn.boundary ? topTools(turn.toolCounts) : '경계 미확인 (서브에이전트 등)'}</span>
+                      <span>
+                        <button
+                          type="button"
+                          className="chip-button tiny"
+                          aria-expanded={openTurn === turn.turnIndex}
+                          aria-label={`턴 ${turn.turnIndex} 상세 ${openTurn === turn.turnIndex ? '접기' : '펼치기'}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenTurn((current) => (current === turn.turnIndex ? null : turn.turnIndex));
+                          }}
+                        >{openTurn === turn.turnIndex ? '▾' : '▸'}</button>
+                      </span>
+                    </div>
+                    {openTurn === turn.turnIndex ? (
+                      <TurnDetail api={api} session={activeSession} turn={turn} />
+                    ) : null}
                   </div>
                 ))}
               </div>
