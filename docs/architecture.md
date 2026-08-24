@@ -24,8 +24,12 @@ Provider files / APIs / hooks
   - parse / normalize
   - reconcile trigger
           |
+          +--> Scan Pool (worker_threads)
+          |    - read + parse only, never the store
+          |    - strategy chosen per FILE, keyed provider:strategy
+          |    - streams batches back mid-file
           v
-     Usage Engine
+     Usage Engine   <-- the only SQLite writer
           |
     +-----+----------------+
     |                      |
@@ -56,15 +60,40 @@ REST handles request/response operations and SSE carries server-to-client update
 - `GET /api/v1/events` — `snapshot` SSE events, including an immediate full snapshot and heartbeat comments.
 - `POST /api/v1/rescan` — request provider reconciliation.
 - `GET /api/v1/diagnostics` — SQLite path and store row counters; no provider content.
-- `GET|POST|DELETE /api/v1/providers/codex/hooks` — inspect, install, or remove NyangTracker hooks.
+- `GET /api/v1/sessions` — session ranking for the selected period.
+- `GET /api/v1/sessions/:sessionId/flow` — one session's turn ledger, phase split and context curve.
+- `GET /api/v1/usage/timeseries` — token categories per time bucket and provider.
+- `GET /api/v1/usage/models` — per-model totals and share.
+- `GET /api/v1/projects` — project breakdown.
+- `GET /api/v1/projects/:projectKey` — one project's sessions and totals.
+- `PUT /api/v1/projects/:projectKey/alias` — display alias and path redaction.
+- `GET /api/v1/quota/history` — server quota snapshots over time; percent only.
+- `GET|POST|DELETE /api/v1/providers/:provider/hooks` — inspect, install, or remove NyangTracker hooks for one provider.
 - `GET /healthz` — minimal unauthenticated liveness check.
+
+### Period parameters
+
+Every route that takes a period resolves it through one helper, so the default
+and the escape hatch cannot drift apart per route:
+
+- `since` — ISO instant. Omitting it means **the current local month**, not all
+  time. That default is a guard: it stops a client from sweeping the whole
+  ledger by accident.
+- `all=1` — explicit all-time flag. It wins over any `since` sent with it.
+
+The flag exists because omitting `since` cannot express all time. The transport
+drops `null` query parameters, so a client asking for all time by sending
+`since: null` sent no period at all and the server answered with its month
+default — the screen said "all time" and showed one month.
+`test/period-all-time.test.mjs` pins the server default, the flag and the
+transport's parameter handling together, because fixing one layer alone lets
+them diverge again.
 
 Every `/api/v1` request requires the process-generated access token. REST sends it in `X-Nyang-Access-Token`; browser `EventSource` sends it as the `access_token` query parameter. SSE events contain complete snapshots, so reconnecting clients do not need to replay every missed delta.
 
 ## Single service instance
 
-The hook bridge listens on a fixed per-user socket (`\.\pipe
-yangtracker-usage-hook` on Windows, a socket under the temp directory elsewhere), so only one usage service can run at a time. A second instance fails fast with a readable message instead of competing for the same SQLite file and hook signals.
+The hook bridge listens on a fixed per-user socket — `\\.\pipe\nyangtracker-usage-hook` on Windows, `<tmpdir>/nyangtracker-<uid>-usage-hook.sock` elsewhere (`service/hook-server.mjs`), so only one usage service can run at a time. A second instance fails fast with a readable message instead of competing for the same SQLite file and hook signals.
 
 ## Provider adapter contract
 
@@ -159,20 +188,86 @@ Current tables:
 
 - `sessions`
 - `usage_events`
+- `turns` — turn boundaries only, carrying no tokens
 - `server_usage_snapshots`
 - `reconciliation_events`
 - `provider_scan_state`
+- `project_aliases` — display alias and path-redaction flag
 
 Usage events carry a stable `event_key` when possible. Server snapshots carry a `snapshot_key`; current display lanes are grouped by `(provider, limit_id, window_type)`, while reconciliation history also includes `window_minutes`. The legacy `scan_state` table is retained only as a migration source for existing Codex installations.
 
 The schema is deliberately provider-neutral enough for later adapters.
 
+### Indexes follow the query, not the column
+
+Aggregation orders and filters on `COALESCE(event_timestamp, observed_at)`, and
+deduplication looks up `(provider, source_path, turn_index)`. An index on the
+bare columns serves neither, so those are **expression indexes** built over the
+same expression the query uses.
+
+The reason is not tidiness. The first scan writes into the table it is also
+reading for deduplication, so a dedup lookup that cannot use an index makes the
+backfill quadratic: measured 6.345 ms per insert at 18k rows, and a cold start
+that spent 35.4 minutes before the port was even bound. With the indexes in
+place the same dedup costs 0.128 ms. Deduplication also avoids `OR` in `WHERE` —
+SQLite will not use an index for an `OR` spanning different columns, so the two
+cases are two indexed statements instead of one convenient query.
+
+## Startup order
+
+The service binds its port **before** the historical scan finishes. A cold start
+over a large corpus takes tens of seconds even after the index fix, and a window
+that never opens is indistinguishable from a program that failed to start.
+
+`UsageEngine.start({ warmup })` has two modes. `blocking` waits for the whole
+scan, which is what tests and one-shot CLI runs want. `background` returns as
+soon as the incremental watch is armed and runs the backfill behind it; the web
+entrypoints use it.
+
+Progress is part of the snapshot rather than a log line. `snapshot.warmup`
+carries `phase` (`idle` / `scanning` / `ready` / `failed`), `filesTotal`,
+`filesDone` and per-provider counts, and the engine re-emits it on a throttle
+while scanning. The client needs it to tell "nothing has arrived yet" apart from
+"measured zero" — see the table at the end of this document.
+
+Parsing runs in a `worker_threads` pool (`service/scan-pool.mjs`), but **the
+store stays single-writer on the main thread.** Splitting writes across threads
+would let turn numbering and cumulative-diff accounting overwrite each other, so
+only the expensive half — reading and JSON parsing — moves off-thread. Because
+the writer is the floor, extra producers stop helping quickly: measured over 899
+files, one worker took 20.0 s, two 17.2 s, four 17.5 s. The default is two, and
+`NYANG_SCAN_WORKERS` raises it for corpora where parsing costs more.
+
+The parse strategy is chosen per **file**, not per provider, because Gemini
+writes two formats: `.jsonl` resumes from a byte offset while `.json` is a
+whole-document snapshot judged by content hash. A failed worker is discarded
+rather than returned to the pool — it may have been mid-file, and its leftover
+batches would land in the next job.
+
 ## UI measurement labels
 
-The dashboard distinguishes data provenance at the number level. Codex v1 renders the first three labels; the rest are reserved for later adapters and the pricing registry.
+The dashboard distinguishes data provenance at the number level. All three
+implemented adapters report `local_observed`; the last two labels are reserved
+for the server-verified lane and the pricing registry.
 
 - **로컬 관측** — parsed from provider-owned local logs. Implemented.
 - **서버 관측** — server quota/usage snapshot exists, but not necessarily an exact token ledger. Implemented.
 - **미확인** — no reliable source currently supports the value. Implemented.
 - **서버 검증됨** — reconciled against an authoritative server usage endpoint. Reserved.
 - **추정** — derived from pricing/tokenizer/other estimation. Reserved.
+
+Provenance is one axis. A number's **absence** is another, and it has three
+causes that get three different glyphs, because collapsing them makes the screen
+state something it never measured:
+
+| Situation | Shown |
+|---|---|
+| the value has not arrived from the service yet | `로딩중..` |
+| never observed | `—` |
+| observed, and the value is zero | `0` |
+
+Writing the first case as the third is the worst of the three: during the
+opening scan, "0 tokens this month" reads as the user's own usage.
+`measurementPending` in `src/shared.js` decides it from `snapshot.warmup.phase`
+plus whether any event has arrived, so a partial total is labelled partial
+rather than pending.

@@ -1,3 +1,3 @@
 import { runHookInvocation } from '../service/hook-invocation.mjs';
 
-await runHookInvocation();
+await runHookInvocation({ provider: 'codex' });

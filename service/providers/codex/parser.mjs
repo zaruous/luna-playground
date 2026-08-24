@@ -1,5 +1,8 @@
 import { clampNonNegative, extractSessionIdFromPath, projectNameFromCwd } from '../../utils.mjs';
 
+// 1 = 턴 계산 이전, 2 = 턴 경계·도구 이름을 기록하는 버전.
+export const CODEX_PARSER_VERSION = 2;
+
 const EMPTY_USAGE = Object.freeze({
   inputTokens: 0,
   cachedInputTokens: 0,
@@ -150,6 +153,15 @@ function normalizeRateLimits(raw) {
   };
 }
 
+// Codex 는 도구 호출을 response_item 에 담습니다. 이름과 경로만 뽑고
+// arguments(payload)는 읽지 않습니다 — Claude 어댑터와 같은 경계입니다.
+const TOOL_CALL_TYPES = new Set(['function_call', 'custom_tool_call', 'local_shell_call', 'tool_search_call']);
+
+function toolNameFromResponseItem(payload) {
+  if (!payload || !TOOL_CALL_TYPES.has(payload.type)) return null;
+  return payload.name ?? payload.tool_name ?? payload.type;
+}
+
 function sessionMetaFromPayload(payload, filePath) {
   const meta = payload?.meta ?? payload ?? {};
   const git = payload?.git ?? meta?.git ?? null;
@@ -170,7 +182,7 @@ function sessionMetaFromPayload(payload, filePath) {
   };
 }
 
-export function createCodexParserState({ filePath, previousUsage = null, session = null } = {}) {
+export function createCodexParserState({ filePath, previousUsage = null, session = null, turn = null } = {}) {
   return {
     filePath,
     session: session ?? {
@@ -189,6 +201,11 @@ export function createCodexParserState({ filePath, previousUsage = null, session
     },
     previousUsage: previousUsage ? normalizeUsage(previousUsage) : { ...EMPTY_USAGE },
     hasPreviousUsage: Boolean(previousUsage),
+    // 턴 추적(docs/dev/menus/session.md). Codex 의 턴 경계는
+    // event_msg/user_message 이고, 도구 이름은 response_item 에 있습니다.
+    // 파일 중간부터 tail 하면 경계를 모를 수 있어 그럴 땐 0번(경계 미확인)입니다.
+    turn: turn ?? { index: 0, startedAt: null, compactedPending: false },
+    pendingTools: { toolCounts: {}, touchedPaths: {} },
   };
 }
 
@@ -223,6 +240,42 @@ export function parseCodexRolloutLine(line, state) {
     return emitted;
   }
 
+  // 도구 호출. 이름과 경로만 모아 두고, 다음 token_count 이벤트에 붙입니다
+  // — Codex 는 도구 호출과 토큰 기록이 별 레코드라 이렇게 잇습니다.
+  if (item.type === 'response_item') {
+    const toolName = toolNameFromResponseItem(payload);
+    if (toolName) {
+      state.pendingTools.toolCounts[toolName] = (state.pendingTools.toolCounts[toolName] ?? 0) + 1;
+    }
+    return emitted;
+  }
+
+  if (item.type === 'event_msg' && payload.type === 'user_message') {
+    // 턴 경계 = 사람 프롬프트. payload.message(본문)는 읽지 않습니다.
+    state.turn = {
+      index: state.turn.index + 1,
+      startedAt: outerTimestamp,
+      compactedPending: state.turn.compactedPending,
+    };
+    emitted.push({
+      type: 'turn',
+      provider: 'codex',
+      sessionId: state.session.forkedFromId ?? state.session.sessionId,
+      turnIndex: state.turn.index,
+      startedAt: state.turn.startedAt,
+      compacted: state.turn.compactedPending,
+      parserVersion: CODEX_PARSER_VERSION,
+    });
+    state.turn.compactedPending = false;
+    return emitted;
+  }
+
+  // 컴팩션. 다음 턴에 표시를 붙여 컨텍스트 곡선의 급락을 설명합니다.
+  if (item.type === 'compacted' || (item.type === 'event_msg' && payload.type === 'context_compacted')) {
+    state.turn.compactedPending = true;
+    return emitted;
+  }
+
   if (item.type !== 'event_msg' || payload.type !== 'token_count') return emitted;
 
   const info = payload.info ?? null;
@@ -240,8 +293,15 @@ export function parseCodexRolloutLine(line, state) {
       incrementSource: increment.source,
       measurementSource: 'local_log',
       measurementQuality: 'local_exact',
+      parserVersion: CODEX_PARSER_VERSION,
       contextWindow: Number(info?.model_context_window ?? info?.modelContextWindow) || null,
+      // 이 요청이 속한 턴과, 앞선 response_item 들이 부른 도구 이름.
+      turnIndex: state.turn.index,
+      toolCounts: { ...state.pendingTools.toolCounts },
+      touchedPaths: { ...state.pendingTools.touchedPaths },
     });
+    // 붙였으면 비웁니다 — 다음 token_count 가 같은 도구를 또 세지 않도록.
+    state.pendingTools = { toolCounts: {}, touchedPaths: {} };
   }
 
   const rateLimits = normalizeRateLimits(payload.rate_limits ?? payload.rateLimits);

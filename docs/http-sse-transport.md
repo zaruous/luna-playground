@@ -25,6 +25,13 @@ Standalone defaults to `http://127.0.0.1:47831`. Configuration:
 - `NYANG_PORT` — standalone listen port.
 - `NYANG_HOST` — listen address; defaults to `127.0.0.1`.
 - `NYANG_USER_DATA` — SQLite/user-data directory.
+- `NYANG_SCAN_WORKERS` — parse worker count for the historical scan. Unset means
+  `min(2, cores - 1)`. The pool floor is 1, so `0` and an empty string both give
+  one worker rather than disabling the pool; an explicit value above 2 is honoured
+  (the 2 ceiling applies only to the automatic default). Two is the measured knee
+  because SQLite stays single-writer and the writer is the floor: over 899 files,
+  one worker took 20.0 s, two 17.2 s, four 17.5 s. Raise it only where parsing
+  costs more than writing.
 - `NYANG_ALLOW_REMOTE=1` — explicit acknowledgement required before binding to a non-loopback address.
 
 `NYANG_ALLOW_REMOTE` is not transport security. Remote deployment additionally requires TLS, an authenticated reverse proxy, restricted origins, and a device/tenant authorization policy.
@@ -54,7 +61,15 @@ Snapshots are intentionally self-contained. The `id` is a monotonic per-process 
 - `/api/v1/*` requires a random per-process token.
 - REST uses `X-Nyang-Access-Token`.
 - SSE uses an `access_token` query parameter because the browser `EventSource` API cannot set a custom authorization header.
-- Cross-origin access is limited to the Vite development origin (`http://127.0.0.1:5173`, `http://localhost:5173`) and the service's own origin.
+- Cross-origin access is limited to the service's own origin plus the origins registered at runtime through `UsageApiServer#allowOrigins`. The default allow list is empty; `scripts/dev.mjs` registers the addresses Vite actually opened after `listen()`, so changing the dev port cannot leave a stale allow list behind. Registering one loopback address also allows the `127.0.0.1`, `localhost`, and `[::1]` spellings of that same port, because the browser sends whichever name the tab used — `start()` registers the service's own address the same way, so a tab opened on `localhost` reaches a service bound to `127.0.0.1`.
 - SQLite and provider logs remain inaccessible to the client.
 
 Tokens are process-scoped connection capabilities, not long-lived user credentials. Do not put them in logs or persist them in browser storage.
+
+**Known consequence — restarting the service breaks an open tab.** The token is
+generated per process, so a tab holding the old one starts getting 401s and its
+numbers simply stop moving; nothing on the page says why. Reloading fixes it
+because the page is served with a freshly injected token. This is a real defect
+rather than a design choice: the client should surface an auth failure as "the
+service restarted — reload" instead of going quiet. It is recorded here so the
+symptom is not diagnosed as a collection stall.

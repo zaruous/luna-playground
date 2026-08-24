@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { rootDir, startUsageService } from './usage-service.mjs';
+import { reportWarmupProgress, rootDir, startUsageService } from './usage-service.mjs';
 
 const staticRoot = path.join(rootDir, 'dist');
 const host = process.env.NYANG_HOST || '127.0.0.1';
@@ -22,6 +22,7 @@ process.on('SIGTERM', () => stop().finally(() => process.exit(0)));
 try {
   service = await startUsageService({ host, port, staticRoot });
   console.log(`냥토큰 트래커 서버: ${service.baseUrl}`);
+  reportWarmupProgress(service);
 } catch (error) {
   await stop();
   console.error('냥토큰 트래커 서버 시작 실패:', error);
