@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TableHead, ViewHead, sortRows, useSlowStamp, useTableSort } from './Bits.jsx';
-import TurnDetail from './TurnDetail.jsx';
+import ExpensiveTurns, { useSessionFlow } from './SessionTurns.jsx';
+import { topTurnsOf } from '../session-turns.js';
 import {
-  formatTokens, formatPercent, relativeTime, phaseLabel, PENDING_LABEL, tokensText,
+  formatTokens, formatPercent, relativeTime, phaseLabel, PENDING_LABEL,
   providerUnavailable, unavailableNotice,
 } from '../shared.js';
 
@@ -14,6 +15,9 @@ const PERIODS = [
 ];
 
 const rankColumns = '1.3fr .8fr .5fr .5fr .6fr .7fr .6fr';
+
+// 비싼 턴 표에 담는 개수. 프로젝트 상세의 세션 표도 같은 값을 씁니다.
+const TURN_LIMIT = 8;
 
 // 정렬은 원본 값으로 합니다. 토큰은 '4.60B' 같은 글자로 그려지고, 재독 배수는
 // null 이 섞이며(관측 없음), 턴 수는 0 이 아니라 '—' 로 나옵니다 — 화면 글자를
@@ -28,17 +32,6 @@ const RANK_COLUMNS = [
   { key: 'navigate', label: '이동', sortable: false },
 ];
 
-const TURN_COLUMNS = [
-  { key: 'turnIndex', label: '턴', type: 'number' },
-  { key: 'startedAt', label: '시각', type: 'time' },
-  { key: 'totalTokens', label: '토큰', type: 'number' },
-  { key: 'requestCount', label: '요청', type: 'number' },
-  { key: 'phase', label: '단계', type: 'text' },
-  { key: 'toolCounts', label: '도구', sortable: false },
-  { key: 'detail', label: '상세', sortable: false },
-];
-const turnColumnTemplate = '.5fr .7fr .8fr .5fr .6fr 1.6fr .4fr';
-
 // 기간 경계는 로컬 시간대로 만듭니다 — 스토어도 'localtime'으로 끊습니다.
 function sinceFor(period) {
   if (period === 'all') return null;
@@ -52,14 +45,6 @@ function reuseLabel(value) {
   if (value == null) return '—';
   if (value < 10) return `${value.toFixed(1)}x`;
   return `${Math.round(value)}x`;
-}
-
-function topTools(toolCounts, limit = 4) {
-  return Object.entries(toolCounts ?? {})
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, limit)
-    .map(([name, count]) => `${name}×${count}`)
-    .join(' ');
 }
 
 // 컨텍스트 곡선. 라이브러리 없이 SVG로 그립니다 — 대시보드의 막대·게이지와
@@ -105,11 +90,7 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
   const [providerFilter, setProviderFilter] = useState('all');
   const [sessions, setSessions] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [flow, setFlow] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  // 펼친 턴. 상세는 원본 파일을 다시 읽는 무거운 호출이라 한 번에 하나만
-  // 엽니다 — 여러 개를 동시에 펼치면 같은 파일을 그만큼 다시 읽습니다.
-  const [openTurn, setOpenTurn] = useState(null);
 
   // 스냅샷 시각을 그대로 쓰면 SSE 가 밀어대는 동안 요청이 계속 취소됩니다.
   const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
@@ -146,18 +127,9 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
   const rankSortLabel = RANK_COLUMNS.find((column) => column.key === rankSort.key)?.label ?? '기본';
   const activeSession = sortedList.find((row) => row.sessionId === selected) ?? sortedList[0] ?? null;
 
-  useEffect(() => {
-    if (!api?.sessions?.flow || !activeSession) { setFlow(null); return undefined; }
-    let active = true;
-    api.sessions.flow(activeSession.sessionId, { provider: activeSession.provider })
-      .then((payload) => { if (active) setFlow(payload); })
-      .catch(() => { if (active) setFlow(null); });
-    return () => { active = false; };
-  }, [api, activeSession?.sessionId, activeSession?.provider, stamp]);
-
-  // 세션을 바꾸면 펼침을 닫습니다. 턴 번호는 세션마다 다시 1부터라, 그대로
-  // 두면 다른 세션의 같은 번호 턴이 열려 있는 것처럼 보입니다.
-  useEffect(() => { setOpenTurn(null); }, [activeSession?.sessionId, activeSession?.provider]);
+  // 흐름 조회는 프로젝트 상세의 세션 표와 같은 훅을 씁니다 — 두 화면이 같은
+  // 세션을 다르게 읽지 않도록(SessionTurns.jsx 머리말).
+  const { flow } = useSessionFlow(api, activeSession, stamp);
 
   const summary = useMemo(() => {
     if (!list.length) return null;
@@ -171,14 +143,10 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
     return { count: list.length, worst, dominant };
   }, [list]);
 
-  // 무엇을 담을지(토큰 상위 8개)를 먼저 정하고, 그 8개를 어떤 순서로 세울지는
-  // 헤더가 정합니다. 기본값이 토큰 내림차순이라 정렬을 건드리지 않으면 이전과
-  // 같은 표입니다.
-  const topTurns = useMemo(() => (
-    [...(flow?.turns ?? [])].sort((left, right) => right.totalTokens - left.totalTokens).slice(0, 8)
-  ), [flow]);
-  const [turnSort, toggleTurnSort] = useTableSort(TURN_COLUMNS, 'totalTokens');
-  const expensiveTurns = useMemo(() => sortRows(topTurns, TURN_COLUMNS, turnSort), [topTurns, turnSort]);
+  // 요약 카드가 읽을 상위 턴. 표를 그리는 일은 ExpensiveTurns 가 하지만,
+  // "가장 비싼 턴" 카드는 표의 첫 행이 아니라 이 목록의 최댓값을 읽습니다 —
+  // 표는 헤더로 정렬을 바꿀 수 있어서 첫 행이 "가장 비싼" 이 아닙니다.
+  const topTurns = useMemo(() => topTurnsOf(flow, TURN_LIMIT), [flow]);
 
   return (
     <>
@@ -274,6 +242,10 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
                   <button
                     type="button"
                     className="chip-button tiny"
+                    // 키만 넘깁니다. 프로젝트 화면은 선택을 잠그는 대신 그 프로젝트
+                    // 이름을 검색 필터에 걸지만, 이름은 여기서 받지 않고 프로젝트
+                    // 목록에서 읽습니다 — 두 화면의 이름이 갈릴 수 있습니다
+                    // (project.md 의 '넘어온 프로젝트로 선택을 잠그지는 않습니다').
                     onClick={(event) => { event.stopPropagation(); onNavigate?.('project', { projectKey: row.projectKey }); }}
                   >프로젝트 →</button>
                 </span>
@@ -338,41 +310,7 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
                   턴 {flow.session.turnCount}개 · 요청 {flow.session.requestCount.toLocaleString('ko-KR')}개
                 </span>
               </div>
-              <div className="table-wrap">
-                <TableHead columns={TURN_COLUMNS} sort={turnSort} onSort={toggleTurnSort} style={{ gridTemplateColumns: turnColumnTemplate }} />
-                {expensiveTurns.map((turn) => (
-                  <div key={turn.turnIndex}>
-                    <div
-                      className={`table-row turn-row ${openTurn === turn.turnIndex ? 'is-open' : ''}`}
-                      role="row"
-                      style={{ gridTemplateColumns: turnColumnTemplate }}
-                      onClick={() => setOpenTurn((current) => (current === turn.turnIndex ? null : turn.turnIndex))}
-                    >
-                      <strong>{turn.boundary ? turn.turnIndex : '—'}</strong>
-                      <span>{turn.startedAt ? new Date(turn.startedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</span>
-                      <strong>{formatTokens(turn.totalTokens)}</strong>
-                      <span>{turn.requestCount}</span>
-                      <span>{phaseLabel(turn.phase)}{turn.compacted ? ' · 컴팩션' : ''}</span>
-                      <span className="turn-tools">{turn.boundary ? topTools(turn.toolCounts) : '경계 미확인 (서브에이전트 등)'}</span>
-                      <span>
-                        <button
-                          type="button"
-                          className="chip-button tiny"
-                          aria-expanded={openTurn === turn.turnIndex}
-                          aria-label={`턴 ${turn.turnIndex} 상세 ${openTurn === turn.turnIndex ? '접기' : '펼치기'}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setOpenTurn((current) => (current === turn.turnIndex ? null : turn.turnIndex));
-                          }}
-                        >{openTurn === turn.turnIndex ? '▾' : '▸'}</button>
-                      </span>
-                    </div>
-                    {openTurn === turn.turnIndex ? (
-                      <TurnDetail api={api} session={activeSession} turn={turn} />
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+              <ExpensiveTurns api={api} session={activeSession} flow={flow} limit={TURN_LIMIT} />
               <div className="kv">
                 <span>메인 transcript</span>
                 <strong>{flow.source.mainSourcePath ?? '가림 설정으로 숨김'}</strong>

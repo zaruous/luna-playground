@@ -190,3 +190,22 @@ rect.chart-seg-undecomposed{stroke:color-mix(in srgb,var(--muted) 35%,transparen
 @media(max-width:1100px){.turn-detail-top{grid-template-columns:1fr}.turn-log-body{grid-template-columns:1fr}}
 @media(max-width:700px){.turn-detail-facts{grid-template-columns:1fr}.turn-tree-head,.turn-tree-row{grid-template-columns:18px 12px minmax(0,1fr) 64px}.turn-tree-head span:nth-child(n+3),.turn-tree-row>*:nth-child(n+6){display:none}}
 .turn-tree-dot.is-blank{background:none}
+
+/* ─── 프로젝트 상세의 세션 표 → 턴 분석 ───────────────────────────────────
+   세션 흐름 화면의 "비싼 턴" 과 같은 표·같은 상세를 프로젝트 화면에서도
+   엽니다(src/views/SessionTurns.jsx). 줄 바로 아래로 펼치는 이유도 같습니다 —
+   어느 세션의 분석인지가 표와 붙어 있어야 읽힙니다. */
+.session-row.is-open{background:color-mix(in srgb,var(--accent) 9%,var(--card))}
+.session-analysis{margin:0 0 10px;padding:14px;background:var(--soft);border:1px dashed var(--line);border-radius:14px}
+.session-analysis-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.session-analysis-head h3{margin:0;font-size:12px}
+.session-analysis-head h3 span{color:var(--accent);font-size:9px}
+.session-analysis-head .panel-sub{margin-top:4px}
+.session-analysis-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.session-analysis-actions .filter-note{margin:0}
+/* 펼친 블록 안의 턴 상세는 이미 들여쓴 자리이므로 배경을 한 겹 더 깔지
+   않습니다 — 회색 위 회색이 되면 경계가 사라집니다. */
+.session-analysis .turn-detail{background:var(--card)}
+.project-search{display:flex;align-items:center;gap:8px}
+.project-search .search-input{min-width:0}
+.project-search .chip-button{flex:none}
