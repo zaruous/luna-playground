@@ -25,6 +25,7 @@
 | [menus/usage.md](./menus/usage.md) | `usage` (AI 사용량) | 구현됨 (M2) — 상세 표·CSV는 미구현, 열린 결함 하나([T1](./menus/usage.md#todo)) |
 | [menus/session.md](./menus/session.md) | `session` (세션 흐름) | **구현됨 (M8)** — 턴 단위 토큰 배분, 프로젝트 탭과 양방향 이동 |
 | [menus/project.md](./menus/project.md) | `project` (프로젝트) | 구현됨 (M2) |
+| [menus/detail.md](./menus/detail.md) | `detail` (상세 내역) | 미구현 (설계) — 요청·도구 호출 단위 상세를 시작점으로, "뭐가 많았고 왜 많았나"에 답하는 화면 |
 | [menus/budget.md](./menus/budget.md) | `budget` (동기화) | **구현됨 (M4 동기화 절반)** — provider 상태 카드 · provider별 Hook · 한도 이력 · 대조 타임라인 · 진단 |
 | [menus/alert.md](./menus/alert.md) | `alert` (알림) | 미구현 |
 | [menus/settings.md](./menus/settings.md) | `settings` (설정) | 미구현 (스킨 선택만 헤더에 존재) |
