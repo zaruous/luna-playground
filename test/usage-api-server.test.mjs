@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { UsageApiServer } from '../service/api-server.mjs';
+import { UsageApiServer, loopbackOriginVariants } from '../service/api-server.mjs';
 
 class FakeUsageEngine extends EventEmitter {
   constructor() {
@@ -115,6 +115,62 @@ test('HTTP API rejects untrusted browser origins before token handling', async (
     });
     assert.equal(response.status, 403);
     assert.equal((await response.json()).error, 'origin_not_allowed');
+  } finally {
+    await server.stop();
+  }
+});
+
+test('loopback dev origins are allowed once registered, whichever host name the tab used', async () => {
+  const server = new UsageApiServer({ usageEngine: new FakeUsageEngine(), accessToken: 'test-token' });
+  const baseUrl = await server.start();
+  try {
+    const before = await fetch(`${baseUrl}/api/v1/snapshot`, {
+      headers: { Origin: 'http://localhost:15173', 'X-Nyang-Access-Token': 'test-token' },
+    });
+    assert.equal(before.status, 403);
+
+    // dev 진입점이 Vite 가 열은 주소 하나만 넘겨도 루프백 표기 세 가지가 함께 열립니다.
+    server.allowOrigins(['http://127.0.0.1:15173/']);
+
+    for (const origin of ['http://127.0.0.1:15173', 'http://localhost:15173', 'http://[::1]:15173']) {
+      const response = await fetch(`${baseUrl}/api/v1/snapshot`, {
+        headers: { Origin: origin, 'X-Nyang-Access-Token': 'test-token' },
+      });
+      assert.equal(response.status, 200, `${origin} should be allowed`);
+      assert.equal(response.headers.get('access-control-allow-origin'), origin);
+      await response.json();
+    }
+
+    const other = await fetch(`${baseUrl}/api/v1/snapshot`, {
+      headers: { Origin: 'http://localhost:5173', 'X-Nyang-Access-Token': 'test-token' },
+    });
+    assert.equal(other.status, 403);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('loopbackOriginVariants expands loopback hosts and leaves other hosts alone', () => {
+  assert.deepEqual(
+    loopbackOriginVariants('http://127.0.0.1:15173/').sort(),
+    ['http://127.0.0.1:15173', 'http://[::1]:15173', 'http://localhost:15173'].sort(),
+  );
+  assert.deepEqual(loopbackOriginVariants('http://192.168.0.10:15173/'), ['http://192.168.0.10:15173']);
+  assert.deepEqual(loopbackOriginVariants('not-a-url'), []);
+});
+
+test('the service allows its own address under every loopback spelling', async () => {
+  const server = new UsageApiServer({ usageEngine: new FakeUsageEngine(), accessToken: 'test-token' });
+  const baseUrl = await server.start();
+  try {
+    const port = new URL(baseUrl).port;
+    for (const host of ['127.0.0.1', 'localhost', '[::1]']) {
+      const response = await fetch(`${baseUrl}/api/v1/snapshot`, {
+        headers: { Origin: `http://${host}:${port}`, 'X-Nyang-Access-Token': 'test-token' },
+      });
+      assert.equal(response.status, 200, `http://${host}:${port} should be allowed`);
+      await response.json();
+    }
   } finally {
     await server.stop();
   }

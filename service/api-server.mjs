@@ -55,6 +55,30 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+// 개발 서버 origin 을 여기에 포트로 박아두면, 포트를 바꾼 순간 화면은
+// CORS 403 만 받고 데이터가 비어 보입니다. 그래서 기본 허용 목록은 비어
+// 있고, dev 진입점이 실제로 열린 주소를 allowOrigins 로 등록합니다.
+//
+// 루프백은 127.0.0.1 / localhost / [::1] 이 같은 서버를 가리키지만 Origin
+// 헤더에는 브라우저가 주소창에 적힌 이름을 그대로 싣습니다. 그래서 한
+// 주소를 등록하면 나머지 두 표기도 같은 포트로 함께 넣습니다.
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
+
+export function loopbackOriginVariants(input) {
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    return [];
+  }
+  const origins = new Set([url.origin]);
+  if (LOOPBACK_HOSTS.includes(url.hostname)) {
+    const port = url.port ? `:${url.port}` : '';
+    for (const host of LOOPBACK_HOSTS) origins.add(`${url.protocol}//${host}${port}`);
+  }
+  return [...origins];
+}
+
 function clientConfigScript(config) {
   const serialized = JSON.stringify(config).replaceAll('<', '\\u003c');
   return `<script>window.__NYANG_TRACKER_CONFIG__=${serialized};</script>`;
@@ -126,7 +150,7 @@ export class UsageApiServer {
     accessToken = crypto.randomBytes(32).toString('base64url'),
     staticRoot = null,
     heartbeatMs = 20_000,
-    allowedOrigins = ['http://127.0.0.1:5173', 'http://localhost:5173'],
+    allowedOrigins = [],
   } = {}) {
     if (!usageEngine) throw new TypeError('usageEngine is required');
     this.usageEngine = usageEngine;
@@ -140,7 +164,8 @@ export class UsageApiServer {
     this.accessToken = accessToken;
     this.staticRoot = staticRoot ? path.resolve(staticRoot) : null;
     this.heartbeatMs = heartbeatMs;
-    this.allowedOrigins = new Set(allowedOrigins);
+    this.allowedOrigins = new Set();
+    this.allowOrigins(allowedOrigins);
     this.server = null;
     this.baseUrl = null;
     this.clients = new Set();
@@ -168,6 +193,10 @@ export class UsageApiServer {
     const address = this.server.address();
     const displayHost = this.host.includes(':') ? `[${this.host}]` : this.host;
     this.baseUrl = `http://${displayHost}:${address.port}`;
+    // 같은 서버라도 주소창에 127.0.0.1 대신 localhost 를 적으면 Origin 이
+    // 달라집니다. 정적 파일까지 이 서버가 내보내는 start:web 경로에서 그
+    // 차이만으로 403 이 나지 않도록 자기 주소의 표기들을 함께 허용합니다.
+    this.allowOrigins([this.baseUrl]);
     this.usageEngine.on('snapshot', this.onSnapshot);
     this.heartbeat = setInterval(() => {
       for (const client of this.clients) client.write(`: heartbeat ${Date.now()}\n\n`);
@@ -185,9 +214,19 @@ export class UsageApiServer {
     this.clients.clear();
     const server = this.server;
     this.server = null;
+    for (const origin of loopbackOriginVariants(this.baseUrl ?? '')) this.allowedOrigins.delete(origin);
     this.baseUrl = null;
     server.closeIdleConnections?.();
     await new Promise((resolve) => server.close(() => resolve()));
+  }
+
+  // dev 진입점이 Vite 가 실제로 열은 주소를 넘겨줍니다. --port 로 바꿔도
+  // 여기 등록되는 값이 따라 바뀌므로 허용 목록이 낡지 않습니다.
+  allowOrigins(urls) {
+    for (const url of urls ?? []) {
+      for (const origin of loopbackOriginVariants(url)) this.allowedOrigins.add(origin);
+    }
+    return [...this.allowedOrigins];
   }
 
   clientConfig() {
