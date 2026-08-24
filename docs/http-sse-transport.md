@@ -61,7 +61,7 @@ Snapshots are intentionally self-contained. The `id` is a monotonic per-process 
 - `/api/v1/*` requires a random per-process token.
 - REST uses `X-Nyang-Access-Token`.
 - SSE uses an `access_token` query parameter because the browser `EventSource` API cannot set a custom authorization header.
-- Cross-origin access is limited to the Vite development origin (`http://127.0.0.1:5173`, `http://localhost:5173`) and the service's own origin.
+- Cross-origin access is limited to the service's own origin plus the origins registered at runtime through `UsageApiServer#allowOrigins`. The default allow list is empty; `scripts/dev.mjs` registers the addresses Vite actually opened after `listen()`, so changing the dev port cannot leave a stale allow list behind. Registering one loopback address also allows the `127.0.0.1`, `localhost`, and `[::1]` spellings of that same port, because the browser sends whichever name the tab used — `start()` registers the service's own address the same way, so a tab opened on `localhost` reaches a service bound to `127.0.0.1`.
 - SQLite and provider logs remain inaccessible to the client.
 
 Tokens are process-scoped connection capabilities, not long-lived user credentials. Do not put them in logs or persist them in browser storage.
