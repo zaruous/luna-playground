@@ -3,10 +3,12 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { catCommentPayload } from './cat-comments.mjs';
+import { readTurnDetail } from './providers/turn-detail-readers.mjs';
 
 const API_PREFIX = '/api/v1';
 const HOOK_ROUTE = new RegExp(`^${API_PREFIX}/providers/([a-z0-9_-]+)/hooks$`);
 const SESSION_FLOW_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/flow$`);
+const SESSION_TURN_DETAIL_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/turns/(\\d+)/detail$`);
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -67,6 +69,52 @@ function isWithinRoot(root, candidate) {
 const ALL_TIME_FLAGS = new Set(['1', 'true', 'yes']);
 // 초기화는 되돌릴 수 없으므로 클라이언트가 이 문자열을 그대로 보내야 합니다.
 const RESET_CONFIRMATION = 'RESET';
+
+// 턴 상세 응답 조립.
+//
+// 가림(redacted)된 프로젝트에서는 **경로 문자열을 응답에 싣지 않습니다.** 읽기
+// 자체는 서비스가 하므로 토큰·도구 내역은 그대로 나오지만, 파일 이름은 그
+// 프로젝트가 무엇인지 말해 버립니다 — 가림의 목적이 그것을 막는 것입니다.
+function turnDetailPayload(source, detail) {
+  const redacted = Boolean(source.redacted);
+  const categories = redacted ? detail.categories.filter((row) => row.key !== 'file') : detail.categories;
+  return {
+    provider: source.provider,
+    sessionId: source.sessionId,
+    turnIndex: source.turnIndex,
+    projectKey: source.projectKey,
+    projectName: source.projectName,
+    redacted,
+    boundary: source.boundary,
+    // 원장이 말하는 이 턴의 합계. 아래 measured 와 다르면 화면이 그 사실을
+    // 적습니다 — 둘 중 하나를 조용히 고르지 않습니다.
+    ledger: source.ledger,
+    measured: detail.totals,
+    supported: detail.supported,
+    available: detail.available,
+    reason: detail.reason,
+    filesMeasured: detail.filesMeasured ?? true,
+    categories,
+    files: redacted ? [] : detail.files,
+    records: redacted
+      ? detail.records.map((row) => (row.paths ? { ...row, paths: {} } : row))
+      : detail.records,
+    recordCount: detail.recordCount,
+    duplicateCount: detail.duplicateCount,
+    truncated: detail.truncated,
+    source: {
+      files: detail.scanned.map((file) => ({
+        path: redacted ? null : file.path,
+        label: file.label,
+        exists: file.exists,
+        lines: file.lines,
+        bytes: file.bytes,
+      })),
+      missing: detail.scanned.filter((file) => !file.exists).length,
+      total: detail.scanned.length,
+    },
+  };
+}
 
 export class UsageApiServer {
   constructor({
@@ -314,6 +362,28 @@ export class UsageApiServer {
         return;
       }
       json(res, 200, flow);
+      return;
+    }
+    // 턴 상세(비싼 턴 → 무엇에 썼나). 원장에는 없는 화면이라 원본 로그를 그
+    // 자리에서 다시 읽습니다 — 저장하지 않고, 본문도 읽지 않습니다
+    // (service/providers/turn-detail.mjs 머리말).
+    const turnDetailRoute = pathname.match(SESSION_TURN_DETAIL_ROUTE);
+    if (req.method === 'GET' && turnDetailRoute) {
+      const source = this.usageEngine.store.getTurnSource({
+        provider: query.get('provider') ?? 'claude',
+        sessionId: decodeURIComponent(turnDetailRoute[1]),
+        turnIndex: Number(turnDetailRoute[2]),
+      });
+      if (!source) {
+        json(res, 404, { error: 'turn_not_found' });
+        return;
+      }
+      const detail = await readTurnDetail({
+        provider: source.provider,
+        sourcePaths: source.sourcePaths,
+        turnIndex: source.turnIndex,
+      });
+      json(res, 200, turnDetailPayload(source, detail));
       return;
     }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/timeseries`) {

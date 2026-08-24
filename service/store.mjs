@@ -1555,6 +1555,77 @@ export class UsageStore {
     };
   }
 
+  // 턴 하나의 **원본 포인터와 원장 합계**.
+  //
+  // 턴 상세(비싼 턴을 눌렀을 때 나오는 트리·파이)는 원본 로그를 다시 읽어
+  // 만듭니다. 그런데 "어느 파일을 읽어야 하나"를 추측하면 안 됩니다 — 한 세션이
+  // 메인 transcript 와 서브에이전트 파일 여러 개에 걸쳐 있고, 재개하면 사본이
+  // 하나 더 생깁니다. 원장은 이벤트마다 source_path 를 들고 있으므로, **그 턴에
+  // 실제로 기여한 파일만** 골라 줄 수 있습니다.
+  //
+  // 원장 합계를 함께 주는 이유는 대조입니다. 파일을 다시 읽은 합계가 이 값과
+  // 다르면(스캔 이후 추가 기록, 지워진 사본) 화면이 그 사실을 말해야 합니다.
+  getTurnSource({ provider, sessionId, turnIndex = 0 } = {}) {
+    const providerId = normalizeProviderId(provider);
+    if (!sessionId) return null;
+    const index = Number(turnIndex) || 0;
+
+    const summary = this.db.prepare(`
+      SELECT COALESCE(NULLIF(project_name, ''), 'unknown-project') AS project_name,
+             MAX(cwd) AS cwd, MAX(model) AS model,
+             ${this.#tokenSums()},
+             MIN(COALESCE(event_timestamp, observed_at)) AS first_at,
+             MAX(COALESCE(event_timestamp, observed_at)) AS last_at
+      FROM usage_events
+      WHERE provider = ? AND session_id = ? AND COALESCE(turn_index, 0) = ?
+    `).get(providerId, sessionId, index);
+    if (!summary || !Number(summary.event_count)) return null;
+
+    const boundary = this.db.prepare(
+      'SELECT started_at, compacted FROM turns WHERE provider = ? AND session_id = ? AND turn_index = ?',
+    ).get(providerId, sessionId, index) ?? null;
+
+    // 이 턴에 기여한 파일만. 정렬은 경로 순으로 고정합니다 — 스캔 순서에
+    // 따라 'main' 라벨이 다른 파일에 붙으면 화면이 요청마다 달라집니다.
+    const sourcePaths = this.db.prepare(`
+      SELECT source_path, COUNT(*) AS event_count
+      FROM usage_events
+      WHERE provider = ? AND session_id = ? AND COALESCE(turn_index, 0) = ? AND source_path IS NOT NULL
+      GROUP BY source_path
+      ORDER BY event_count DESC, source_path ASC
+    `).all(providerId, sessionId, index).map((row) => String(row.source_path));
+
+    const tokens = this.#tokensFrom(summary);
+    const project = this.#applyProjectPrivacy(
+      { provider: providerId, name: summary.project_name, cwd: summary.cwd },
+      this.#aliasIndex(),
+    );
+    return {
+      provider: providerId,
+      sessionId,
+      turnIndex: index,
+      projectKey: project.projectKey,
+      projectName: project.name,
+      // 가림된 프로젝트는 경로를 **응답에 싣지 않습니다.** 읽기는 서비스가
+      // 하므로 상세 자체는 나오지만, 경로 문자열은 나가지 않습니다
+      // (docs/dev/menus/project.md 와 같은 규칙).
+      redacted: project.redacted ?? false,
+      sourcePaths,
+      boundary: boundary
+        ? { startedAt: boundary.started_at ?? null, compacted: Number(boundary.compacted) === 1 }
+        : null,
+      ledger: {
+        tokens,
+        promptTokens: promptSideTokens(providerId, tokens),
+        totalTokens: promptSideTokens(providerId, tokens) + tokens.outputTokens,
+        requestCount: tokens.eventCount,
+        firstAt: summary.first_at,
+        lastAt: summary.last_at,
+        model: summary.model,
+      },
+    };
+  }
+
   // 원장을 파일 하나로 복사합니다. `VACUUM INTO` 를 쓰는 이유는 서비스가 살아
   // 있는 동안에도 **정합 스냅샷**을 주기 때문입니다 — 파일을 그대로 복사하면
   // WAL 이 활성인 순간에 찢어진 사본이 나옵니다.
