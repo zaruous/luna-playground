@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:fresh": "npm run news:refresh && vite",
     "build": "vite build",
     "preview": "vite preview",
     "news:refresh": "node scripts/fetch-news.mjs",

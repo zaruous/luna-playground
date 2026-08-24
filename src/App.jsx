@@ -71,6 +71,26 @@ function StoryCard({ story, featured = false }) {
   );
 }
 
+function EmptyState({ hasFeed }) {
+  if (hasFeed) {
+    return (
+      <section className="empty-state">
+        <span>NO SIGNAL</span>
+        <h2>조건에 맞는 뉴스가 없습니다.</h2>
+        <p>검색어를 지우거나 다른 카테고리를 선택해보세요.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="empty-state">
+      <span>NO FEED DATA</span>
+      <h2>뉴스 데이터가 아직 없습니다.</h2>
+      <p>이 화면은 빌드 시점에 <code>src/data/news.json</code>에 저장된 목록만 사용합니다. 실행 중 서버나 외부 API를 호출하지 않으므로 포트나 CORS 문제와는 무관합니다.</p>
+      <p><code>npm run news:refresh</code>로 피드를 내려받은 뒤 dev 서버를 다시 시작하거나 새로 빌드하세요. 이 명령이 실패하면 <code>news.google.com</code>으로의 네트워크(프록시·방화벽) 접근을 확인하세요.</p>
+    </section>
+  );
+}
+
 export default function App() {
   const [category, setCategory] = useState('전체');
   const [query, setQuery] = useState('');
@@ -86,6 +106,7 @@ export default function App() {
 
   const featured = visibleItems[0];
   const rest = visibleItems.slice(1);
+  const hasFeed = newsData.items.length > 0;
   const dateLabel = newsData.generatedAt ? formatDate(newsData.generatedAt, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) : '뉴스 업데이트 대기';
 
   return (
@@ -109,7 +130,7 @@ export default function App() {
             <button type="button" className="download-button" onClick={() => downloadMarkdown(visibleItems)} disabled={!visibleItems.length}><DownloadIcon /> Markdown</button>
           </div>
         </section>
-        {featured ? <section className="news-layout"><div className="section-heading"><span>RANKING</span><p>{visibleItems.length}개의 뉴스 · Google News Top Stories 기준</p></div><StoryCard story={featured} featured /><div className="story-grid">{rest.map((story) => <StoryCard key={story.id} story={story} />)}</div></section> : <section className="empty-state"><span>NO SIGNAL</span><h2>조건에 맞는 뉴스가 없습니다.</h2><p>검색어를 지우거나 다른 카테고리를 선택해보세요.</p></section>}
+        {featured ? <section className="news-layout"><div className="section-heading"><span>RANKING</span><p>{visibleItems.length}개의 뉴스 · Google News Top Stories 기준</p></div><StoryCard story={featured} featured /><div className="story-grid">{rest.map((story) => <StoryCard key={story.id} story={story} />)}</div></section> : <EmptyState hasFeed={hasFeed} />}
       </main>
       <footer><div><strong>NEWSTREND</strong><span>News belongs to its original publishers.</span></div><p>Google News RSS의 당일 노출 순서를 정리하며, 기사 내용은 저장하지 않고 제목·출처·원문 링크만 제공합니다.</p></footer>
     </div>
