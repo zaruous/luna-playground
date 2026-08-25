@@ -175,6 +175,9 @@ function App() {
     snapshot, hookStatuses, api, actionBusy, currentTheme, pending,
     onToggleHooks: toggleHooks,
     onRescan: rescan,
+    // 대시보드의 "최근 프로젝트 발자국"도 세션·프로젝트 화면과 같은 길로
+    // 넘어갑니다 — 행을 누르면 프로젝트 탭이 그 프로젝트를 골라 연다.
+    onNavigate: navigate,
   };
   const views = {
     dashboard: <DashboardView {...viewProps} />,

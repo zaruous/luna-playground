@@ -91,7 +91,7 @@ function addTokens(target, source) {
   return target;
 }
 
-export default function DashboardView({ snapshot, hookStatuses, api, actionBusy, currentTheme, pending = false, onToggleHooks }) {
+export default function DashboardView({ snapshot, hookStatuses, api, actionBusy, currentTheme, pending = false, onToggleHooks, onNavigate }) {
   const [period, setPeriodState] = useState(() => savedPeriod() ?? 'month');
   // 사용자가 직접 고른 적이 있는가. 없으면 아래 effect 가 스냅샷을 보고 한 번만
   // 기본값을 정합니다.
@@ -470,7 +470,16 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
           <TableHead className="project-row project-header" columns={PROJECT_COLUMNS} sort={projectSort} onSort={toggleProjectSort} />
           {sortedProjects.length ? sortedProjects.map((project, index) => {
             const provider = providerRows.find((item) => item.id === project.provider) ?? providerRows[0];
-            return <div className="project-row" role="row" key={`${project.provider}-${project.name}-${project.cwd ?? index}`}><div className="project-name"><span className={`folder ${['green','orange','blue'][index % 3]}`}/><div><strong>{project.name}</strong><small>{project.cwd || project.model || `${provider?.name ?? 'AI'} session`}</small></div></div><div className="project-ai"><span className={`ai-mark ${provider?.tone ?? 'mint'}`}>{provider?.short ?? '?'}</span>{provider?.name ?? project.provider}</div><strong>{formatTokens(project.totalTokens)}</strong><span>{relativeTime(project.lastActivity)}</span></div>;
+            // 이 프로젝트가 이번 달 목록에 없을 수도 있으므로(대시보드는 이번
+            // 달만 보여준다), 프로젝트 탭으로 넘어가면 전체 기간으로 넓혀서
+            // 찾습니다 — 그 규칙은 ProjectView 의 focus 처리 쪽에 있습니다.
+            const openProject = () => onNavigate?.('project', { projectKey: project.projectKey });
+            return <div
+              className="project-row project-row--clickable"
+              role="row"
+              key={`${project.provider}-${project.name}-${project.cwd ?? index}`}
+              onClick={openProject}
+            ><div className="project-name"><span className={`folder ${['green','orange','blue'][index % 3]}`}/><div><strong>{project.name}</strong><small>{project.cwd || project.model || `${provider?.name ?? 'AI'} session`}</small></div></div><div className="project-ai"><span className={`ai-mark ${provider?.tone ?? 'mint'}`}>{provider?.short ?? '?'}</span>{provider?.name ?? project.provider}</div><strong>{formatTokens(project.totalTokens)}</strong><span>{relativeTime(project.lastActivity)}</span></div>;
           }) : pending
             ? <div className="empty-projects"><strong>로딩중..</strong><span>로그를 읽는 중이에요. 프로젝트가 확인되는 대로 이 표에 채워집니다.</span></div>
             : <div className="empty-projects"><strong>아직 이번 달 AI 사용 기록이 없어요.</strong><span>연결된 provider 로그가 발견되면 과거 기록부터 자동으로 채웁니다.</span></div>}

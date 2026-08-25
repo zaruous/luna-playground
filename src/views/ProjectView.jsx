@@ -15,6 +15,13 @@ const SESSION_COLUMNS = [
 ];
 const sessionColumnTemplate = '1.1fr .9fr .6fr .6fr .4fr';
 
+// 왼쪽 프로젝트 목록도 대시보드 "최근 프로젝트 발자국"과 같은 기준(마지막
+// 활동 내림차순)으로 보여줍니다. 서버가 내려주는 기본 순서(getProjectBreakdown,
+// 토큰 총량 내림차순)를 그대로 쓰면 두 화면이 "최근"이라는 같은 말을 다른
+// 순서로 말하게 됩니다 — 여기서 클라이언트가 다시 정렬합니다.
+const PROJECT_LIST_SORT_COLUMNS = [{ key: 'lastActivity', type: 'time' }];
+const PROJECT_LIST_SORT = { key: 'lastActivity', direction: 'desc' };
+
 export default function ProjectView({ snapshot, api, focus, pending = false, onNavigate }) {
   const [projects, setProjects] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
@@ -64,7 +71,10 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
     return () => { active = false; };
   }, [api, stamp, allTime]);
 
-  const list = projects ?? [];
+  const list = useMemo(
+    () => sortRows(projects ?? [], PROJECT_LIST_SORT_COLUMNS, PROJECT_LIST_SORT),
+    [projects],
+  );
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     if (!keyword) return list;
@@ -196,6 +206,11 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
               {filtered.map((item) => (
                 <button type="button" key={item.projectKey} className={`project-item${item.projectKey === activeKey ? ' selected' : ''}`} onClick={() => setSelectedKey(item.projectKey)}>
                   <strong>{item.name}{item.redacted ? ' 🔒' : ''}</strong>
+                  {/* cwd 를 여기서도 보여주는 이유: 이름만 보면 같은 레포의
+                      하위 폴더들이(예: mesclient / Client/MESClient / ...Setup)
+                      서로 무관한 프로젝트처럼 보입니다 — 상세를 열어야만
+                      보이던 경로를 목록에서도 바로 대조할 수 있게 합니다. */}
+                  <small className="project-item-cwd" title={item.cwd ?? undefined}>{item.redacted ? '경로 가림' : (item.cwd || '경로 메타데이터 없음')}</small>
                   <small>{formatTokens(item.totalTokens)} · {providerCatalog.find((meta) => meta.id === item.provider)?.name ?? item.provider}</small>
                 </button>
               ))}
