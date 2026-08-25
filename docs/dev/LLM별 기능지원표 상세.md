@@ -36,10 +36,17 @@ Gemini에 캐시 쓰기 필드가 없다는 것은 설계 문서의 서술이고
 
 ### 7. Tool 토큰 필드
 
-- **Claude**: `service/providers/claude/parser.mjs:85` — `toolTokens: 0,` **하드코딩**입니다. 원본 필드를 읽으려는 시도 자체가 없습니다.
-- **Codex**: 모델에 `toolTokens` 키가 존재하지 않습니다(`EMPTY_USAGE`, `normalizeUsage` 등에 없음). DB 컬럼이 0으로 채워지는 것은 `service/store.mjs`가 `usage.toolTokens ?? 0`으로 코얼레스하기 때문이고, Codex가 뭔가를 측정해서가 아닙니다.
-- **Gemini**: `service/providers/gemini/parser.mjs:135,145` — `tool` 필드를 실제로 읽습니다. 다만 **코퍼스 전체에서 관측값이 항상 0**이라 `total` 안/밖 위치를 확정하지 못합니다(`gemini/collector.mjs:82-83`의 `toolTokensSeen` 카운터가 이 사실을 위한 것). 그래서 △ — 필드는 진짜인데 실측이 전부 0입니다.
-- **Cursor**: 없음.
+**이 행은 "도구가 얼마나 썼나"라는 질문 전체가 아니라, provider가 원본 로그에
+별도로 주는 독립 필드 `toolTokens` 하나만 봅니다.** "도구 사용량"은 실제로는
+겹이 셋입니다 — (a) 도구 이름·호출 횟수 기록(`tool_counts`, 아래 21번), (b) 그걸
+턴 상세 화면에서 입력+출력 토큰을 호출 비율로 재배분해 보여주는 것(22번), (c) 이
+행이 보는 독립 `toolTokens` 필드. 셋은 서로 다른 코드 경로이고, 실제로 쓰이는
+쪽은 (a)·(b)입니다 — (c)는 사실상 아무 provider도 제대로 못 씁니다.
+
+- **Claude**: `service/providers/claude/parser.mjs:85` — `toolTokens: 0,` **하드코딩**입니다. 원본 필드를 읽으려는 시도 자체가 없습니다. 대신 21·22번 경로(도구 이름 기록 + 턴 상세 재배분)는 Claude가 넷 중 유일하게 완전히 됩니다.
+- **Codex**: 모델에 `toolTokens` 키가 존재하지 않습니다(`EMPTY_USAGE`, `normalizeUsage` 등에 없음). DB 컬럼이 0으로 채워지는 것은 `service/store.mjs`가 `usage.toolTokens ?? 0`으로 코얼레스하기 때문이고, Codex가 뭔가를 측정해서가 아닙니다. 21번(도구 이름)은 되고 22번(턴 상세)은 파일 가지만 빈 채로 됩니다.
+- **Gemini**: `service/providers/gemini/parser.mjs:135,145` — `tool` 필드를 실제로 읽습니다. 다만 **코퍼스 전체에서 관측값이 항상 0**이라 `total` 안/밖 위치를 확정하지 못합니다(`gemini/collector.mjs:82-83`의 `toolTokensSeen` 카운터가 이 사실을 위한 것). 그래서 △ — 필드는 진짜인데 실측이 전부 0입니다. 21번(도구 이름 기록)은 되지만 22번(턴 상세 화면)은 아직 `supported: false`라 재료는 있어도 화면으로 안 나옵니다.
+- **Cursor**: 없음. 21·22번도 전부 X — 어댑터 자체가 없어 도구 이름을 기록할 재료도 없습니다.
 
 ### 8. 필드별 신뢰도 등급(`field_quality`)
 
