@@ -34,19 +34,19 @@ Gemini에 캐시 쓰기 필드가 없다는 것은 설계 문서의 서술이고
 - **Gemini**: `service/providers/gemini/parser.mjs:134` — `const reasoning = clampNonNegative(tokens.thoughts)`. 신뢰도는 항등식 성립 여부로 등급화됩니다(행 8).
 - **Cursor**: 없음.
 
-### 7. Tool 토큰 필드
+### 7. Tool 사용량 지원여부
 
-**이 행은 "도구가 얼마나 썼나"라는 질문 전체가 아니라, provider가 원본 로그에
-별도로 주는 독립 필드 `toolTokens` 하나만 봅니다.** "도구 사용량"은 실제로는
-겹이 셋입니다 — (a) 도구 이름·호출 횟수 기록(`tool_counts`, 아래 21번), (b) 그걸
-턴 상세 화면에서 입력+출력 토큰을 호출 비율로 재배분해 보여주는 것(22번), (c) 이
-행이 보는 독립 `toolTokens` 필드. 셋은 서로 다른 코드 경로이고, 실제로 쓰이는
-쪽은 (a)·(b)입니다 — (c)는 사실상 아무 provider도 제대로 못 씁니다.
+"도구를 얼마나 썼는지 알 수 있는가"는 코드에서 서로 다른 세 겹으로 나뉘어
+있습니다 — (a) 도구 이름·호출 횟수 기록(`tool_counts`, 아래 21번), (b) 그걸 턴
+상세 화면에서 입력+출력 토큰을 호출 비율로 재배분해 보여주는 것(22번), (c)
+provider가 원본 로그에 별도로 주는 독립 `toolTokens` 필드. 이 행의 O/△/X는
+**(a)와 (b)를 종합한 값**입니다 — (c)는 실제로 쓰이는 곳이 없어 종합 판단에서
+비중을 두지 않았고, 사실만 각 provider 항목 끝에 남겨 둡니다.
 
-- **Claude**: `service/providers/claude/parser.mjs:85` — `toolTokens: 0,` **하드코딩**입니다. 원본 필드를 읽으려는 시도 자체가 없습니다. 대신 21·22번 경로(도구 이름 기록 + 턴 상세 재배분)는 Claude가 넷 중 유일하게 완전히 됩니다.
-- **Codex**: 모델에 `toolTokens` 키가 존재하지 않습니다(`EMPTY_USAGE`, `normalizeUsage` 등에 없음). DB 컬럼이 0으로 채워지는 것은 `service/store.mjs`가 `usage.toolTokens ?? 0`으로 코얼레스하기 때문이고, Codex가 뭔가를 측정해서가 아닙니다. 21번(도구 이름)은 되고 22번(턴 상세)은 파일 가지만 빈 채로 됩니다.
-- **Gemini**: `service/providers/gemini/parser.mjs:135,145` — `tool` 필드를 실제로 읽습니다. 다만 **코퍼스 전체에서 관측값이 항상 0**이라 `total` 안/밖 위치를 확정하지 못합니다(`gemini/collector.mjs:82-83`의 `toolTokensSeen` 카운터가 이 사실을 위한 것). 그래서 △ — 필드는 진짜인데 실측이 전부 0입니다. 21번(도구 이름 기록)은 되지만 22번(턴 상세 화면)은 아직 `supported: false`라 재료는 있어도 화면으로 안 나옵니다.
-- **Cursor**: 없음. 21·22번도 전부 X — 어댑터 자체가 없어 도구 이름을 기록할 재료도 없습니다.
+- **Claude — O.** (a) `tool-phases.mjs`의 `claude:` 테이블이 실제 도구 이름을 담고 있고, (b) `claude/turn-detail.mjs`가 `supported: true`로 완전히 동작합니다 — 셋 중 유일하게 (a)·(b) 둘 다 완전합니다. (c) 독립 필드는 `service/providers/claude/parser.mjs:85` — `toolTokens: 0,` **하드코딩**이고 읽으려는 시도 자체가 없습니다.
+- **Codex — △.** (a) `tool-phases.mjs`의 `codex:` 테이블도 실제 도구 이름을 담습니다. (b) `codex/turn-detail.mjs`가 `supported: true`이긴 하나 `filesMeasured: false`로 파일 가지만 항상 비어 있습니다(파서가 경로를 안 뽑음). (c) 모델에 `toolTokens` 키 자체가 없습니다(`EMPTY_USAGE`, `normalizeUsage` 등에 없음) — DB 컬럼이 0인 것은 `service/store.mjs`가 `usage.toolTokens ?? 0`으로 코얼레스해서고, Codex가 측정한 값이 아닙니다.
+- **Gemini — △.** (a) `tool-phases.mjs`의 `gemini:` 테이블이 있고(M5에서 실제 로그로 채움), 세션 순위의 "우세 단계"·세션 흐름의 "단계별 배분"에 이미 씁니다. (b) 그런데 `gemini/turn-detail.mjs`가 `supported: false, reason: 'provider_not_implemented'`인 **템플릿뿐**이라, 이름·횟수 재료는 있어도 턴 단위로 토큰까지 쪼개 보여주는 화면은 아직 없습니다 — 그래서 O가 아니라 △. (c) `service/providers/gemini/parser.mjs:135,145`가 `tool` 필드를 실제로 읽지만, **코퍼스 전체에서 관측값이 항상 0**이라 `total` 안/밖 위치를 확정하지 못합니다(`gemini/collector.mjs:82-83`의 `toolTokensSeen` 카운터가 이 사실을 위한 것).
+- **Cursor — X.** (a)·(b) 전부 X — 어댑터 자체가 없어 도구 이름을 기록할 재료가 없습니다. (c)도 당연히 없습니다.
 
 ### 8. 필드별 신뢰도 등급(`field_quality`)
 

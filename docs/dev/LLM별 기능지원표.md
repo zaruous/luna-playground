@@ -50,9 +50,17 @@ Claude Code · Codex · Gemini CLI · Cursor 네 provider가 이 코드베이스
 | 4 | 캐시 **읽기** 토큰 구분 | O | O | O | X |
 | 5 | 캐시 **쓰기** 토큰 구분 | O | O | X | X |
 | 6 | Reasoning/Thinking 토큰 분리 | O | O | O | X |
-| 7 | Tool 토큰 필드 | X | X | △ | X |
+| 7 | Tool 사용량 지원여부 | O | △ | △ | X |
 | 8 | 필드별 신뢰도 등급(`field_quality`) | O | X | O | X |
 | 9 | 정정 가능한 중복 제거(upsert, vs insert-or-ignore) | O | X | O | X |
+
+> **7번은 "도구를 얼마나 썼는지 알 수 있는가"를 종합한 값입니다.** 실제로는 세
+> 겹입니다 — 이름·호출 횟수 기록(21번), 턴 상세에서 토큰으로 재배분해 보여주는
+> 화면(22번), provider가 원본 로그에 별도로 주는 독립 `toolTokens` 필드(이건
+> 사실상 아무도 못 씁니다). Claude는 세 겹 다 되고, Codex는 턴 상세의 파일
+> 가지만 비어 있고, **Gemini는 이름·횟수 기록과 세션 단위 단계 배분까지는
+> 되지만 턴 단위 drill-down 화면은 아직 `supported: false`**라 △입니다. 근거는
+> [LLM별 기능지원표 상세.md #7](./LLM별%20기능지원표%20상세.md).
 
 ### 2. 서버 연동 (Admin API/서버 한도)
 
