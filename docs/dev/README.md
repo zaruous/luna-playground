@@ -13,6 +13,8 @@
 | [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude·Gemini 구현 완료) |
 | [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) — 실측, agy(Antigravity CLI) 감지, 포맷·설계 |
 | [cursor/](./cursor/README.md) | Cursor 로컬 트랙(M6a) — 원격 사용량 배제, 로컬 저장소 실측과 메뉴별 적용 계획 (**계획 단계 — 미구현**) |
+| [LLM별 기능지원표.md](./LLM별%20기능지원표.md) | Claude/Codex/Gemini/Cursor 4종의 토큰 사용량 기능 O/X 매트릭스(23개 기능) |
+| [LLM별 기능지원표 상세.md](./LLM별%20기능지원표%20상세.md) | 위 표 각 행의 근거 — 파일:줄 인용, 실측 수치, 문서 인용 |
 | [fix-plan.md](./fix-plan.md) | 열린 결함 다섯 개의 수정 순서. 실측으로 세웠고, 재는 과정에서 감사 당시 서술 여덟 개가 틀렸음이 드러나 그 정정도 함께 담았습니다 |
 | [store-extensions.md](./store-extensions.md) | 위 설계를 받기 위한 SQLite 스키마·쿼리 확장 (§1·§8 구현 완료) |
 
