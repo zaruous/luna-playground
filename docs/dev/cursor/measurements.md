@@ -1,6 +1,7 @@
 # Cursor 로컬 저장소 실측
 
-실측 시점: 2026-08-25(1차) · 2026-08-25(2차, 정정). 대상은 실제 사용 중인 Windows 머신
+실측 시점: 2026-08-25(1차) · 2026-08-25(2차, 정정) · 2026-08-25(3차, 나머지 표면
+전수 확인). 대상은 실제 사용 중인 Windows 머신
 한 대이고, Cursor IDE(Composer)와 Cursor CLI(`cursor-agent`) 둘 다 활성 사용 중입니다.
 목적은 "Cursor가 토큰량을 로컬에 남기는가, 남긴다면 어디에 무슨 모양으로"를 가이드
 문서가 아니라 실제 파일을 읽어 답하는 것입니다 — [gemini/antigravity.md](../gemini/antigravity.md)와
@@ -222,6 +223,36 @@ subagents 601 + summarized_conversation 0 + conversation 1825 = 22633 == 5.1
 아님)" 절, 특히 "합산 금지" 문단).
 
 재현: `node scripts/probe-cursor.mjs`.
+
+## 확인된 것 (3차 조사) — "다른 db 파일에 있는 건 아닌가" 재확인, 나머지 표면 전부 스캔
+
+2차 조사는 `~/.cursor/chats/**/store.db` + `cursorDiskKV`(IDE 전역) 두 표면만 봤습니다.
+"DB 파일에 따로 관리되는 건 아닌가"라는 재질문에 `%APPDATA%\Cursor`(User 하위뿐 아니라
+그 위 앱 루트 전체)에 남아 있던 나머지 표면을 전수 확인했습니다.
+
+| 표면 | 방법 | 결과 |
+|---|---|---|
+| `User\workspaceStorage\<62개 해시>\state.vscdb` (프로젝트별, 지금까지 한 번도 안 엶) | 62개 전부 열어 `ItemTable` 키 전량 나열 + `token` 문자열 포함 키 검색 | 62/62 오픈 성공. `token` 포함 키 **0건**. `composer.composerData`는 컴포저 id 참조만(본문은 여전히 전역 `cursorDiskKV`), `aiService.prompts`/`aiService.generations`는 `{text,commandType}`/`{unixMs,generationUUID,type,textDescription}` — 토큰 필드 없음. `cursorDiskKV` 테이블 자체가 워크스페이스 DB엔 없음(전역 전용) |
+| `User\globalStorage\conversation-search.db` (+`-wal`+`-shm`) | 스키마 전체 나열(`sqlite_master`) | 대화 **검색**(FTS5) 인덱스입니다 — `conversations`/`conversation_fts*`/`conversation_search_*` 10개 테이블, 컬럼은 `title`/`body`/`branches`/`scope`/`updated_at` 류뿐. 토큰 필드 없음 |
+| `anysphere.cursor-commits/checkpoints/<uuid>/metadata.json` (수십 개) | 1개 표본 전문 확인 | `agentRequestId`/`requestFiles[].fsPath`/`gitInfo`/`fileSizeBytes`/`startTrackingDateUnixMilliseconds` — 파일 단위 git 체크포인트 메타데이터. 토큰 필드 없음 |
+| `~/.cursor` 밖, 앱 루트의 Chromium 표준 저장소: `IndexedDB`, `Local Storage`, `Session Storage`, `WebStorage`, `blob_storage` | leveldb `.log`/`.ldb` 파일에 `promptTokens`/`totalTokens`/`usage` 등 문자열 존재 여부 스캔(전체 파싱은 아님) | 5개 디렉터리 전부 **0건** — VSCode/Cursor는 이 Chromium 표준 프로필 저장소를 쓰지 않고 `globalStorage`/`workspaceStorage` 관례만 씁니다 |
+| 최상위 `prompt_history.json` | 파일 전체 구조 확인 | 과거 입력창에 친 프롬프트 **문자열 배열**뿐(자동완성용) — 타임스탬프도 토큰도 없음 |
+
+재현 스크립트: 이번 3차 조사는 재사용 가능한 스크립트로 커밋하지 않았습니다(모두
+"있다/없다"만 답하는 1회성 스캔이라 `probe-cursor.mjs`에 통합할 만한 재사용 로직이
+없었습니다) — 대신 결과를 이 표에 그대로 남깁니다.
+
+**중간 삽질 기록.** 이번 3차 조사 중 `conversation-search.db`와 워크스페이스
+`state.vscdb`를 처음 열 때 전부 `unable to open database file`(SQLite errcode 14)이
+났습니다. Cursor 프로세스가 지금 실행 중이라 "그 프로세스가 잠갔나" 싶었지만,
+실제 원인은 훨씬 단순했습니다 — bash에서 `node -e "...'/c/Users/...'..."`로 경로를
+JS 문자열 안에 통째로 넣어 넘기면 MSYS 경로 자동변환이 `/c/Users/...`를
+`C:\c\Users\...`처럼 **잘못** 다시 쓰는 경우가 있었고, 그 없는 경로를 열려니 실패한
+것이었습니다. `.mjs` 파일로 저장해 `node file.mjs`로 돌리면(경로가 셸을 한 번도
+경유하지 않음) 같은 파일이 즉시 열렸습니다. 이 문서 앞부분의 "1차 조사 표본
+부족"·"IDE 쪽 예외 처리 범위" 삽질과 계보가 같습니다 — 세 번 다 원인은 실측
+자체가 아니라 **조사 스크립트 쪽의 버그**였고, 성급하게 "없다"로 결론 내리기 전에
+도구를 의심해야 한다는 같은 교훈입니다.
 
 ## 확인되지 않은 것
 
