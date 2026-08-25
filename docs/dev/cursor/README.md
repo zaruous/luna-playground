@@ -8,11 +8,13 @@
 
 ## 결론 먼저
 
-**정정 (2026-08-25, Phase 0 실행 후).** 처음엔 "로컬에 토큰 수 필드가 없다"고
-적었습니다. 표본 12개짜리 1차 조사의 결론이었고, 이진 blob 전체(1,068개)를 실제로
-훑자(`scripts/probe-cursor.mjs`) 뒤집혔습니다 — Cursor CLI 로컬 저장소에는 **그 시점
-컨텍스트 창의 구성을 카테고리별 토큰 수로 쪼갠 breakdown**이 있고, 카테고리 합이
-586개 표본 전부에서 선언된 총합과 정확히 일치합니다. 상세는
+**정정 (2026-08-25, Phase 0 + CLI/IDE 재확인까지 완료).** 처음엔 "로컬에 토큰 수
+필드가 없다"고 적었습니다. 표본 12개짜리 1차 조사의 결론이었고, 이진 blob 전체를
+실제로 훑자(`scripts/probe-cursor.mjs`) 뒤집혔습니다 — Cursor 로컬 저장소(CLI
+`~/.cursor/chats` + IDE `state.vscdb`)에는 **그 시점 컨텍스트 창의 구성을
+카테고리별 토큰 수로 쪼갠 breakdown**이 있고, breakdown이 있는 **1,818개 blob
+전부**에서 카테고리 합이 선언된 총합과 정확히 일치합니다(CLI만 봤을 때도 586개
+전부 일치했고, IDE까지 재확인하며 1,232개가 더 늘었습니다). 상세는
 [measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드).
 
 다만 이게 Codex/Claude/Gemini와 **같은 모양의 토큰량은 아닙니다.** 그쪽은 "이
@@ -36,7 +38,7 @@ breakdown은 이제 실측값으로 보여줍니다. 기존 로드맵의 방향�
 |---|---|---|---|
 | 프로젝트 귀속(cwd) | ✅ | `meta.json.cwd`, `composerHeaders.value.workspaceIdentifier`/`trackedGitRepos` | 프로젝트 목록에 Cursor 행 |
 | 대화/컴포저 수, 요청 수 | ✅ | `chats/*/store.db` role 카운트, `composerHeaders` 행 수 | 대시보드 카드, 프로젝트 상세 |
-| **컨텍스트 구성 breakdown(토큰)** | ✅ 실측(586/586 항등식 일치) | 이진 blob `5.1`(총 토큰)/`5.2`(창 크기)/`5.3.3[]`(카테고리별 토큰) | usage/project에 "컨텍스트 구성" 패널 — 요청 델타 막대와는 분리 |
+| **컨텍스트 구성 breakdown(토큰)** | ✅ 실측(CLI+IDE 1,818/1,818 항등식 일치) | 이진 blob `5.1`(총 토큰)/`5.2`(창 크기)/`5.3.3[]`(카테고리별 토큰) | usage/project에 "컨텍스트 구성" 패널 — 요청 델타 막대와는 분리 |
 | 컨텍스트 점유율 | ✅ (백분율, 이제 `5.1/5.2`로 절대값 교차검증됨) | `composerHeaders.value.contextUsagePercent` | 동기화 화면의 "한도류" 자리 |
 | 변경 라인 수 | ✅ | `composerHeaders.value.totalLinesAdded/Removed` | 프로젝트 상세 보조 지표 |
 | **요청 단위** 입력/출력/캐시 토큰 델타 | ❌ (breakdown은 스냅샷이라 이 모양이 아님) | — | "미제공" 배지. 세션/상세 화면 제외 유지 |
@@ -104,9 +106,9 @@ src/shared.js                            cursorSourceState() — geminiSourceSta
 - **이번 단계에서도 Cursor를 넣지 않습니다** — 다만 이유가 "토큰이 없다"에서
   "있는 토큰이 턴 스냅샷이라 요청 델타 정렬(`ORDER BY total_tokens DESC`)의
   전제와 안 맞는다"로 구체화됐습니다. `conversation` 카테고리의 스냅샷 간
-  증가량을 턴 델타로 쓸 수 있는지는 [decisions.md Phase 0 후속 조사](./decisions.md#phase-0--구현-전-조사-스파이크--완료-2026-08-25-후속-조사-남음)
-  2·3번이 끝나야 압니다. `session.md`의 기존 문구("Cursor: 불가")는 이 이유로
-  갱신합니다.
+  증가량을 턴 델타로 쓸 수 있는지는 [decisions.md](./decisions.md)의 Phase 0 절
+  "아직 안 한 것" 2·3번이 끝나야 압니다. `session.md`의 기존 문구("Cursor: 불가")는
+  이 이유로 갱신합니다.
 - provider 필터 칩에는 Cursor가 나타나되 `providerUnavailable()`의
   `context-snapshot-only` 사유로 채워진 안내가 뜹니다.
 
@@ -140,12 +142,12 @@ src/shared.js                            cursorSourceState() — geminiSourceSta
 ## 단계
 
 ```text
-Phase 0  probe-cursor.mjs 로 이진 blob 필드 조사 — 완료, breakdown 발견 ─┐
-Phase 0b IDE 쪽 재확인 + conversation 델타 검증 (후속 조사, 미완료) ─────┤
-                                                                          ├─> Phase 2 detector/parser/collector
-Phase 1  cursor_local_activity 스키마 + capabilities 확장 ───────────────┘        + cursorSourceState()
-                                                                                       │
-Phase 3  메뉴별 화면 반영(위 표) ──────────────────────────────────────────────────────┘
+Phase 0  probe-cursor.mjs 로 CLI+IDE 이진 blob 필드 조사 — 완료, breakdown 발견 ─┐
+Phase 0b conversation 델타로 턴 입출력을 가를 수 있는지 검증 (미완료) ──────────┤
+                                                                                 ├─> Phase 2 detector/parser/collector
+Phase 1  cursor_local_activity 스키마 + capabilities 확장 ──────────────────────┘        + cursorSourceState()
+                                                                                              │
+Phase 3  메뉴별 화면 반영(위 표) ─────────────────────────────────────────────────────────────┘
 Phase 4  (Phase 0b 가 턴 단위 입출력 분리를 확정하면) 세션 흐름·상세 편입 재검토
 ```
 
@@ -156,9 +158,10 @@ Phase 0b와 Phase 1은 서로 의존하지 않아 병행 가능합니다. Phase 
 ## 완료 기준
 
 - [x] `probe-cursor.mjs`가 이진 blob 필드 경로·통계를 출력하고, 토큰류 필드에 대한
-      결론(breakdown 발견, 항등식 586/586 일치)이 `measurements.md`에 추가됨
-- [ ] IDE 쪽(`cursorDiskKV`)도 같은 breakdown을 주는지 확인 — 1차 실행은 IDE를 켠
-      채로 돌려 6행만 잡혔음(잠금 의심), 재확인 필요
+      결론(breakdown 발견, 항등식 1,818/1,818 일치, CLI+IDE 양쪽)이 `measurements.md`에 추가됨
+- [x] IDE 쪽(`cursorDiskKV`)도 같은 breakdown을 주는지 확인 — 1차 실행은 스크립트
+      버그로 6행만 봤던 것이었고, 고쳐서 재실행해 149,698행 전체를 확인함(1,232개
+      추가 breakdown, 창 크기 272000·300000 신규 관측)
 - [ ] `conversation` 카테고리 증가량과 실제 턴 경계·입출력 분리 가능 여부 검증
 - [ ] `cursor_local_activity`가 같은 파일을 반복 스캔해도 행이 늘지 않음(멱등) —
       `composer_id` PK + upsert, breakdown은 "마지막 관측값 승리"

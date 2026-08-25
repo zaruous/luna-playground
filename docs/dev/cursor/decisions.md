@@ -28,7 +28,7 @@ M6](../implementation-plan.md#m6--cursor-어댑터))과 갈라지는 지점을 �
 **정정 (2026-08-25).** 처음엔 "로컬에 토큰 수 필드가 없다"고 결론 냈다가, 표본을
 이진 blob 전체로 넓히자 뒤집혔습니다 — [measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드)에
 `5.1`/`5.2`/`5.3.3[]` 컨텍스트 구성 breakdown이 실측돼 있고, 카테고리별 토큰 합이
-586개 표본 전부에서 선언된 총합과 정확히 일치합니다. 그래서 이 결정은 "토큰 수가
+1,818개 표본 전부(CLI+IDE)에서 선언된 총합과 정확히 일치합니다. 그래서 이 결정은 "토큰 수가
 없다"가 아니라 **"있는 종류의 신호와 없는 종류의 신호를 가른다"**로 다시 씁니다.
 
 **있음 — 쓸 수 있는 것:**
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS cursor_local_activity (
 );
 ```
 
-`context_total_tokens`/`context_breakdown`은 실측 항등식(Σbreakdown == total, 586/586
+`context_total_tokens`/`context_breakdown`은 실측 항등식(Σbreakdown == total, 1,818/1,818
 일치)이 뒷받침하는 값이라 "지어낸 것"이 아니지만, **요청 단위 원장이 아니라 스냅샷**
 이라는 성격은 컬럼 이름에도 남깁니다(`context_` 접두사) — `usage_events`의
 `total_tokens`와 같은 이름을 쓰면 같은 종류로 오해됩니다. `usage_events`와 나란히
@@ -173,29 +173,34 @@ accounting: 'context_only', // usage_events 의 input/output/cache 회계가 아
 자동으로 "감지됐지만 토큰 없음" 경로를 타게 됩니다. 다만 그 안내 문구가 지금은
 Gemini 전용 톤이라 Cursor 케이스를 추가해야 합니다.
 
-## Phase 0 — 구현 전 조사 스파이크 — 완료 (2026-08-25), 후속 조사 남음
+## Phase 0 — 구현 전 조사 스파이크 — 완료 (2026-08-25, CLI+IDE 재확인까지 끝남)
 
-**결과: 후보 있음.** `scripts/probe-cursor.mjs`(`scripts/probe-antigravity.mjs`와 같은
-모양, `antigravity-protobuf.mjs`의 `scanProtobuf` 재사용)로 CLI 쪽 이진 blob 1,068개
-전체를 스캔해 `5.1`/`5.2`/`5.3.3[]` 컨텍스트 구성 breakdown을 찾았고, 카테고리별 합이
-586개 표본 전부에서 총합과 정확히 일치했습니다. 판단 기준(단조성 + 항등식)을 그대로
-적용해 얻은 결론입니다 — 상세는 [measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드).
+**결과: CLI·IDE 양쪽에서 확인됨.** `scripts/probe-cursor.mjs`(`scripts/probe-antigravity.mjs`와
+같은 모양, `antigravity-protobuf.mjs`의 `scanProtobuf` 재사용)로 CLI(`~/.cursor/chats`)와
+IDE(`state.vscdb`의 `cursorDiskKV`) 양쪽의 이진 blob **95,722개**를 스캔해 `5.1`/`5.2`/
+`5.3.3[]` 컨텍스트 구성 breakdown을 찾았고, breakdown이 있는 **1,818개 전부**에서
+카테고리별 합이 총합과 정확히 일치했습니다(불일치 0).
 
-**아직 안 한 것 (후속 조사):**
+**IDE 쪽 첫 실행이 6행만 본 이유는 잠금이 아니라 이 스크립트의 버그였습니다** —
+`scanProtobuf`가 protobuf 아닌 바이트에 물리면 예외를 던지는데, 그 예외를 파일/소스
+단위로 감싸서 잡고 있어 첫 예외 이후 149,692행이 조용히 버려졌습니다. 행 단위로
+고쳐 재실행하자 149,698행 전체가 스캔됐습니다. 상세는
+[measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드).
 
-1. IDE 쪽(`cursorDiskKV`의 `agentKv:blob:%`)은 이번 실행에서 6행만 잡혔습니다 —
-   Cursor IDE가 `state.vscdb`를 잠그고 있었을 가능성이 있어, IDE를 닫고 재실행해
-   같은 breakdown이 나오는지 확인해야 합니다.
+**아직 안 한 것 (후속 조사, Phase 0b로 이름 유지):**
+
+1. ~~IDE 쪽도 같은 breakdown을 주는지~~ — **완료.** IDE 쪽도 확인됨(위), 게다가
+   CLI에는 없던 창 크기(272000·300000)가 IDE 쪽에서 추가로 나왔습니다.
 2. `conversation` 카테고리의 스냅샷 간 증가량이 실제로 "그 턴에 추가된 토큰"과
    일치하는지, 사용자 메시지 쪽과 어시스턴트 응답 쪽을 가를 수 있는 별도 필드가
-   있는지는 아직 못 봤습니다. 있다면 턴 단위 위/아래 분리가 가능해지고, 없다면
+   있는지는 아직 못 봤습니다. 있다면 턴 단위 입/출력 분리가 가능해지고, 없다면
    결정 1의 "요청 단위로는 못 가른다"가 그대로 유지됩니다.
 3. 같은 블롭이 반복 관측된 이유(같은 `conversation` 값이 두 blob에 연속으로
    나타남)를 밝혀야 재집계(멱등) 규칙을 안전하게 정할 수 있습니다 — 지금은
    "최신 관측값 승리"로 가정하고 있습니다.
 
-이 셋을 마치기 전에는 파서를 커밋하지 않습니다 — 항등식은 확인했지만 델타·중복
-규칙은 아직 확정이 아니기 때문입니다.
+1번이 끝났어도 2·3번을 마치기 전에는 파서를 커밋하지 않습니다 — 항등식은 확인했지만
+델타·중복 규칙은 아직 확정이 아니기 때문입니다.
 
 ## 로드맵 재편
 
