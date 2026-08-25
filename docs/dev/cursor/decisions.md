@@ -23,21 +23,40 @@ M6](../implementation-plan.md#m6--cursor-어댑터))과 갈라지는 지점을 �
 있고 계정이 있어야 검증할 수 있는 별도 작업이라 **M6b로 미룹니다**(아래
 [로드맵 재편](#로드맵-재편)). 이 문서가 다루는 것은 M6a입니다.
 
-## 결정 1: 토큰 수를 지어내지 않는다
+## 결정 1: 있는 신호(컨텍스트 구성 breakdown)는 쓰고, 없는 신호(요청 단위 입출력)는 지어내지 않는다
 
-[measurements.md](./measurements.md)가 실측한 대로, 로컬 저장소 어디에도 input/output/
-cache 토큰 수 필드가 없습니다(평문 JSON blob 3,629개 전수 검사 0건). 있는 것은:
+**정정 (2026-08-25).** 처음엔 "로컬에 토큰 수 필드가 없다"고 결론 냈다가, 표본을
+이진 blob 전체로 넓히자 뒤집혔습니다 — [measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드)에
+`5.1`/`5.2`/`5.3.3[]` 컨텍스트 구성 breakdown이 실측돼 있고, 카테고리별 토큰 합이
+586개 표본 전부에서 선언된 총합과 정확히 일치합니다. 그래서 이 결정은 "토큰 수가
+없다"가 아니라 **"있는 종류의 신호와 없는 종류의 신호를 가른다"**로 다시 씁니다.
 
-- **컨텍스트 점유율**(`composerHeaders.contextUsagePercent`) — 백분율, 토큰 아님
-- **요청/컴포저 수** — blob 개수·role 카운트·`composerHeaders` 행 수로 셀 수 있음
-- **변경 라인 수**(`totalLinesAdded`/`totalLinesRemoved`) — 코드 diff, 토큰 아님
-- **프로젝트/시각 귀속**(`cwd`, `createdAt`, `trackedGitRepos`)
+**있음 — 쓸 수 있는 것:**
 
-R7("로그가 제공하지 않는 값은 비워 둔다")과 제품 원칙("정직한 불완전 측정")을
-그대로 따릅니다. **프롬프트 글자 수나 blob 바이트 크기로부터 토큰 수를
-역산하지 않습니다** — 어림값을 정밀한 값처럼 보이게 만드는 것은 이 프로젝트가
-피하는 바로 그것입니다(Codex 백분율 한도를 토큰으로 환산하지 않는 것과 같은 R5의
-연장). Cursor가 다른 provider들과 같은 "토큰량" 열에 나타나는 일은 **당분간 없습니다.**
+- **컨텍스트 구성 breakdown**(`5.1` 총 토큰, `5.2` 창 크기, `5.3.3[]` 카테고리별
+  토큰) — 실측 항등식 100% 일치. 단, 이건 "이 요청이 입력/출력 몇 개 썼나"가 아니라
+  **"그 시점 컨텍스트 창에 무엇이 얼마나 들어있나"**입니다. `conversation` 카테고리의
+  스냅샷 간 증가량으로 턴 사이 델타를 볼 수는 있지만, 사용자 메시지와 어시스턴트
+  응답이 그 델타 안에서 안 갈립니다.
+- **컨텍스트 점유율**(`composerHeaders.contextUsagePercent`) — 위 breakdown과 같은
+  종류(백분율)이고 이제 `5.1/5.2`로 절대값까지 교차 검증됩니다.
+- **요청/컴포저 수** — blob 개수·role 카운트·`composerHeaders` 행 수.
+- **변경 라인 수**(`totalLinesAdded`/`totalLinesRemoved`) — 코드 diff.
+- **프로젝트/시각 귀속**(`cwd`, `createdAt`, `trackedGitRepos`).
+
+**없음(미확인) — 지어내지 않는 것:**
+
+- provider별 **요청 단위** input/output/cache 토큰 델타(Codex/Claude/Gemini가 주는
+  것과 같은 모양). breakdown은 스냅샷이라 이 모양이 아닙니다.
+- 입력과 출력을 가른 값 — `conversation` 카테고리 하나에 섞여 있습니다.
+
+R7("로그가 제공하지 않는 값은 비워 둔다")과 제품 원칙("정직한 불완전 측정")은
+그대로 적용되고, 적용 대상만 "토큰 전부"에서 "요청 단위 입출력 분리"로 좁혀졌습니다.
+**프롬프트 글자 수나 blob 바이트 크기로부터 토큰 수를 역산하지 않습니다** — 이제는
+`5.3.3.3`(토큰)과 `5.3.3.4`(문자)가 나란히 있어 그럴 필요도 없어졌습니다. Cursor가
+다른 provider와 완전히 같은 모양의 "토큰량" 열(입력/출력/캐시 델타)에 나타나는 일은
+**당분간 없지만**, 컨텍스트 구성이라는 다른 모양의 실측값은 화면에 낼 수 있습니다
+(아래 [README.md](./README.md)의 메뉴별 계획을 갱신했습니다).
 
 ## 결정 2: 대화 blob은 구조만 취하고 본문은 절대 읽지 않는다
 
@@ -94,42 +113,57 @@ CREATE TABLE IF NOT EXISTS cursor_local_activity (
   request_count INTEGER NOT NULL DEFAULT 0,   -- role='user' blob 개수
   lines_added INTEGER,
   lines_removed INTEGER,
-  context_usage_percent REAL,         -- 마지막 관측값. 토큰 아님 — 이름에 그대로 남김
+  context_usage_percent REAL,         -- composerHeaders 관측값(있으면). 백분율
+  context_total_tokens INTEGER,       -- 5.1 마지막 관측값 — 스냅샷, 요청 델타 아님
+  context_window_tokens INTEGER,      -- 5.2 (관측: 200000 · 256000)
+  context_breakdown TEXT,             -- 5.3.3[] 을 JSON으로: {"system_prompt":617,"tools":8460,...}
   parser_version INTEGER NOT NULL,
   content_hash TEXT NOT NULL,
   observed_at TEXT NOT NULL
 );
 ```
 
-`usage_events`와 나란히 존재하고, 엔진 집계·스냅샷 어디에서도 `totalTokens`에
-더해지지 않습니다. 화면은 이 테이블을 **별도 패널**로 그립니다(아래 메뉴별 계획).
+`context_total_tokens`/`context_breakdown`은 실측 항등식(Σbreakdown == total, 586/586
+일치)이 뒷받침하는 값이라 "지어낸 것"이 아니지만, **요청 단위 원장이 아니라 스냅샷**
+이라는 성격은 컬럼 이름에도 남깁니다(`context_` 접두사) — `usage_events`의
+`total_tokens`와 같은 이름을 쓰면 같은 종류로 오해됩니다. `usage_events`와 나란히
+존재하고, 엔진 집계·스냅샷 어디에서도 provider 합계 `totalTokens`에 더해지지
+않습니다. 화면은 이 테이블을 **별도 패널**로 그립니다(아래 메뉴별 계획).
 
-## 결정 5: capabilities에 `tokenLedger` 축을 새로 둔다
+## 결정 5: capabilities에 `tokenLedger` 축을 새로 둔다 — 값은 `true`이지만 Codex/Claude/Gemini와 다른 모양
 
 지금 capabilities는 `localLedger`(로컬 원장이 있는가)가 곧 "토큰을 잴 수 있는가"를
 의미했습니다 — Codex/Claude/Gemini는 둘이 항상 같았기 때문입니다. Cursor는 **로컬
-원장은 있는데 토큰은 없는** 첫 사례라 그 둘을 갈라야 합니다.
+원장은 있고 토큰도 있지만, 그 토큰이 요청 단위 입출력 델타가 아니라 컨텍스트 구성
+스냅샷인** 첫 사례라 그 둘을 갈라야 합니다. (정정 전에는 `tokenLedger: false`로
+적었습니다 — [measurements.md](./measurements.md)의 2차 조사로 뒤집혔습니다.)
 
 ```js
 // cursor capabilities (제안)
 localLedger: true,          // cursor_local_activity 는 실측 원장입니다
-tokenLedger: false,         // 위 테이블에 input/output/cache 토큰이 없습니다
+tokenLedger: 'context_snapshot',  // 있지만 요청 단위 델타가 아니라 시점별 컨텍스트 구성입니다.
+                                   // true/false 두 값으로는 이 차이를 못 담아 문자열로 둡니다 —
+                                   // 화면 분기는 이 값이 'context_snapshot'이면 usage 시계열·
+                                   // 캐시 적중률처럼 "요청 델타"를 전제한 계산에서 빠집니다.
 serverQuota: false,         // 이 트랙은 Admin API를 호출하지 않습니다
-turnLedger: false,          // 대화 구조는 있지만(role 나열) 턴 경계·도구 이름 매핑은 미확인(Phase 0 이후 재검토)
+turnLedger: false,          // 대화 구조는 있지만(role 나열) 턴 경계·도구 이름 매핑은 미확인
 hooks: false,               // Cursor CLI hook 계약 미확인
 credentials: 'none',        // 이 트랙은 자격증명을 저장하지 않습니다
-accounting: 'none',         // 토큰 회계 자체가 없음 — accounting.mjs 조회 시 얼리 리턴
+accounting: 'context_only', // usage_events 의 input/output/cache 회계가 아니라
+                             // cursor_local_activity 의 breakdown 회계 — accounting.mjs 조회 시
+                             // 요청 단위 분해(decomposeTokens)로 넘기지 않고 얼리 리턴
 ```
 
 `src/shared.js`에 `cursorSourceState()`를 추가해 `geminiSourceState()`/
-`agy-unmeasured`와 같은 모양의 상태를 돌립니다 — 실제로 이 상황은 agy 케이스와
-구조적으로 같습니다("감지는 됐는데 이 신호는 못 잰다").
+`agy-unmeasured`와 같은 모양의 상태를 돌립니다. 다만 agy와 완전히 같은 문구는 아닙니다
+— agy는 "신호 자체가 없다"였고 Cursor는 "신호는 있는데 모양이 다르다"입니다.
 
 ```js
 {
-  kind: 'local-unmeasured',
-  label: '로컬 감지 · 토큰 회계 없음',
-  detail: 'Cursor 로컬 저장소에 대화·요청 수는 있지만 토큰 수 필드가 없습니다. ' +
+  kind: 'context-snapshot-only',
+  label: '로컬 감지 · 컨텍스트 구성만 (요청 단위 아님)',
+  detail: 'Cursor 로컬 저장소는 시점별 컨텍스트 구성(시스템 프롬프트/도구/규칙/대화 등 ' +
+          '카테고리별 토큰)은 주지만, 요청 단위 입력/출력 델타는 주지 않습니다. ' +
           '서버 사용량(Admin API)은 이 화면에서 다루지 않습니다.',
 }
 ```
@@ -139,28 +173,29 @@ accounting: 'none',         // 토큰 회계 자체가 없음 — accounting.mjs
 자동으로 "감지됐지만 토큰 없음" 경로를 타게 됩니다. 다만 그 안내 문구가 지금은
 Gemini 전용 톤이라 Cursor 케이스를 추가해야 합니다.
 
-## Phase 0 — 구현 전 조사 스파이크 (착수 전 필수)
+## Phase 0 — 구현 전 조사 스파이크 — 완료 (2026-08-25), 후속 조사 남음
 
-[measurements.md](./measurements.md#이진-blob의-필드-의미--1차-스캔표본-12개에서-후보-없음-확정-아님)가
-표본 12개로 남긴 열린 질문입니다. 이진 blob에 토큰 수가 정말 없는지, 표본을 늘려
-확정하기 전에는 파서를 쓰지 않습니다 — agy 조사에서 "grep으로 없다고 봤다가
-틀렸다"를 반복하지 않기 위해서입니다.
+**결과: 후보 있음.** `scripts/probe-cursor.mjs`(`scripts/probe-antigravity.mjs`와 같은
+모양, `antigravity-protobuf.mjs`의 `scanProtobuf` 재사용)로 CLI 쪽 이진 blob 1,068개
+전체를 스캔해 `5.1`/`5.2`/`5.3.3[]` 컨텍스트 구성 breakdown을 찾았고, 카테고리별 합이
+586개 표본 전부에서 총합과 정확히 일치했습니다. 판단 기준(단조성 + 항등식)을 그대로
+적용해 얻은 결론입니다 — 상세는 [measurements.md](./measurements.md#확인된-것-2차-조사--컨텍스트-구성-breakdown-진짜-토큰-수-필드).
 
-**산출물**: `scripts/probe-cursor.mjs`. `scripts/probe-antigravity.mjs`와 같은 모양 —
-`service/providers/gemini/antigravity-protobuf.mjs`의 `scanProtobuf`/`toBytes`를
-그대로 재사용(protobuf wire format은 provider 중립)해서:
+**아직 안 한 것 (후속 조사):**
 
-1. `~/.cursor/chats/**/store.db`(blobs)와 `state.vscdb`의 `cursorDiskKV`
-   (`agentKv:blob:%`) 양쪽을 대상으로,
-2. 첫 바이트가 `{`/`[`인 blob(평문 JSON)은 **건드리지 않고 건너뛰고**,
-3. 나머지 이진 blob만 재귀 스캔해 필드 경로별 count/min/max/단조성/조각-합 후보를
-   낸다(`candidateIdentities()` 그대로 재사용).
+1. IDE 쪽(`cursorDiskKV`의 `agentKv:blob:%`)은 이번 실행에서 6행만 잡혔습니다 —
+   Cursor IDE가 `state.vscdb`를 잠그고 있었을 가능성이 있어, IDE를 닫고 재실행해
+   같은 breakdown이 나오는지 확인해야 합니다.
+2. `conversation` 카테고리의 스냅샷 간 증가량이 실제로 "그 턴에 추가된 토큰"과
+   일치하는지, 사용자 메시지 쪽과 어시스턴트 응답 쪽을 가를 수 있는 별도 필드가
+   있는지는 아직 못 봤습니다. 있다면 턴 단위 위/아래 분리가 가능해지고, 없다면
+   결정 1의 "요청 단위로는 못 가른다"가 그대로 유지됩니다.
+3. 같은 블롭이 반복 관측된 이유(같은 `conversation` 값이 두 blob에 연속으로
+   나타남)를 밝혀야 재집계(멱등) 규칙을 안전하게 정할 수 있습니다 — 지금은
+   "최신 관측값 승리"로 가정하고 있습니다.
 
-**판단 기준**: 필드 경로 후보가 나오면 그 필드가 (a) 한 컴포저 안에서 단조 증가하고
-(b) `composerHeaders.contextUsagePercent`가 크게 뛰는 시점과 같이 움직이는지 대조합니다
-— 그러면 컨텍스트/토큰류 신호일 가능성이 있습니다. 후보가 없으면(1차 표본과 같은
-결과) **토큰 필드는 없다고 결론**하고 결정 1~5로 진행합니다. 어느 쪽이든 결과를
-`measurements.md`에 추가해 남깁니다.
+이 셋을 마치기 전에는 파서를 커밋하지 않습니다 — 항등식은 확인했지만 델타·중복
+규칙은 아직 확정이 아니기 때문입니다.
 
 ## 로드맵 재편
 
@@ -181,5 +216,8 @@ M6a는 M6b의 전제 조건이 아니고 M6b도 M6a의 전제 조건이 아닙�
 - 프롬프트 글자 수·blob 바이트 크기로부터 토큰 수 역산
 - 대화 `content`, 시스템 프롬프트, 도구 입출력 본문을 원장·응답에 싣기
 - `cursorAuth/*`, `secret://*` 등 시크릿 키를 읽거나 나열하기
-- 세션 흐름/상세 화면에 Cursor를 턴 단위로 편입하기(Phase 0 결과가 나오기 전까지)
-- Cursor 행을 `usage_events`에 0 또는 NULL 토큰으로 넣기
+- 세션 흐름/상세 화면에 Cursor를 턴 단위로 편입하기 — breakdown은 스냅샷이라 턴
+  경계·입출력 분리가 아직 없습니다(위 Phase 0 후속 조사 2·3이 끝나기 전까지)
+- `conversation` 카테고리의 스냅샷 증가량을 검증 없이 "이 턴이 쓴 토큰"이라고 표시하기
+- Cursor 행을 `usage_events`에 0 또는 NULL 토큰으로 넣기 — breakdown은 별도
+  `cursor_local_activity`로만 들어가고 요청 단위 원장에는 안 들어갑니다

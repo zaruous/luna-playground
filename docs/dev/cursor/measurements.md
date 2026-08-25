@@ -1,19 +1,36 @@
 # Cursor 로컬 저장소 실측
 
-실측 시점: 2026-08-25. 대상은 실제 사용 중인 Windows 머신 한 대이고, Cursor IDE(Composer)와
-Cursor CLI(`cursor-agent`) 둘 다 활성 사용 중입니다. 목적은 "Cursor가 토큰량을 로컬에
-남기는가, 남긴다면 어디에 무슨 모양으로"를 가이드 문서가 아니라 실제 파일을 읽어 답하는
-것입니다 — [gemini/antigravity.md](../gemini/antigravity.md)와 같은 방법입니다.
+실측 시점: 2026-08-25(1차) · 2026-08-25(2차, 정정). 대상은 실제 사용 중인 Windows 머신
+한 대이고, Cursor IDE(Composer)와 Cursor CLI(`cursor-agent`) 둘 다 활성 사용 중입니다.
+목적은 "Cursor가 토큰량을 로컬에 남기는가, 남긴다면 어디에 무슨 모양으로"를 가이드
+문서가 아니라 실제 파일을 읽어 답하는 것입니다 — [gemini/antigravity.md](../gemini/antigravity.md)와
+같은 방법입니다.
+
+> **정정 (2026-08-25, 같은 날 2차 조사).** 1차 조사는 "평문 JSON blob 3,629개 전수 +
+> 이진 blob 표본 12개에서 토큰 수 필드를 못 찾았다"를 "토큰 수 필드가 없습니다"로
+> 요약해 전달했습니다. **틀렸습니다.** 표본 12개가 너무 적었던 것이지 정말 없는 게
+> 아니었습니다 — [antigravity.md](../gemini/antigravity.md#protobuf-는-필드-이름이-없다)가
+> 이미 경고했던 바로 그 함정("grep으로 없다고 봤다가 틀렸다")을 이번엔 grep이 아니라
+> **표본 부족**으로 반복한 것입니다. `scripts/probe-cursor.mjs`로 이진 blob 1,068개
+> 전체를 훑자 컨텍스트 구성 breakdown 구조가 나왔고, 실측 586개 전부에서 조각 합이
+> 선언된 총합과 정확히 일치했습니다. 아래 "확인된 것"의 새 절이 그 내용이고,
+> [decisions.md](./decisions.md)와 [README.md](./README.md)도 이 결과에 맞춰
+> 갱신했습니다. 이 절을 지우지 않고 남기는 이유는 이 프로젝트의 관례입니다 —
+> M5에서 예측이 틀렸던 두 곳을 지우지 않고 정정으로 남긴 것과 같습니다
+> ([implementation-plan.md M5](../implementation-plan.md#m5--gemini-cli-어댑터--완료)).
 
 ## 왜 실측부터 하는가
 
 기존 계획([provider-token-api.md §5.3](../provider-token-api.md), [roadmap.md Phase
 3](../../roadmap.md))은 "Cursor는 로컬 파일 원장이 없는 provider"라고 단정하고
-Admin API를 유일한 경로로 삼았습니다. 그 단정이 여전히 맞는지를 이번에 다시
-확인했습니다 — 맞지만, 이유가 조사 시점의 예상과 다릅니다: **로컬 저장소는 존재하고
-방대하지만, 그 안에 토큰 수 필드가 없습니다.** 이 구분이 중요한 이유는 "저장소가 없다"와
-"저장소는 있는데 그 필드가 없다"가 이후 설계에서 다른 결론으로 이어지기 때문입니다
-(agy 케이스와 같은 구조 — [antigravity.md](../gemini/antigravity.md) 참고).
+Admin API를 유일한 경로로 삼았습니다. 그 단정을 이번에 다시 확인했더니 **틀렸습니다**
+— 로컬 저장소는 존재하고 방대하며, 그 안에 실제 토큰 수 필드(컨텍스트 구성
+breakdown)가 있습니다. 다만 처음엔 이걸 놓쳤습니다: 이진 blob 표본 12개만 보고
+"필드가 없다"고 결론 냈다가, 표본을 전체(1,068개)로 넓히자 뒤집혔습니다 — 위 정정
+문단과 아래 "확인된 것"이 그 경위와 실측치입니다. "저장소가 없다"·"저장소는 있는데
+필드가 없다"·"저장소도 필드도 있는데 모양이 다르다" 세 가지가 이후 설계에서 각자
+다른 결론으로 이어지므로, 지금은 세 번째입니다(agy 케이스가 두 번째 경우의 참고
+사례 — [antigravity.md](../gemini/antigravity.md)).
 
 ## 어디에 무엇이 있는가
 
@@ -134,30 +151,67 @@ CREATE TABLE ai_code_hashes (
 등. 이 파일에 API 키나 토큰 값 자체는 없습니다(`cursorAuth/*`는 별도로 `state.vscdb`의
 `ItemTable`에 있고, 그건 절대 읽지 않습니다 — [decisions.md](./decisions.md)).
 
+## 확인된 것 (2차 조사) — 컨텍스트 구성 breakdown, 진짜 토큰 수 필드
+
+`scripts/probe-cursor.mjs`로 `~/.cursor/chats/**/store.db`의 이진 blob **1,068개
+전체**(평문 JSON은 여전히 건너뜀)를 `service/providers/gemini/antigravity-protobuf.mjs`의
+`scanProtobuf`로 재귀 스캔했습니다. 필드 경로 `5.1`/`5.2`/`5.3.3[]`에 이름 있는(!)
+브레이크다운이 있습니다 — protobuf 필드 이름이 와이어에 없다는 원칙은 여전히
+맞지만, 이 메시지는 **하위 필드 중 하나가 카테고리 이름 문자열 자체**라서
+`system_prompt` / `tools` / `rules` 처럼 사람이 읽는 라벨이 그대로 나옵니다.
+
+```text
+5.1                    = 그 시점 컨텍스트 총 토큰 수
+5.2                    = 컨텍스트 창 크기 (관측값: 200000 · 256000)
+5.3.1 / 5.3.2          = 5.1 / 5.2 와 항상 동일값 — 같은 헤더의 중첩 사본
+5.3.3[]                = 카테고리별 항목 반복
+  5.3.3.1              = 카테고리 키 (예: "system_prompt")
+  5.3.3.2              = 카테고리 표시명 (예: "System prompt")
+  5.3.3.3              = 그 카테고리의 토큰 수
+  5.3.3.4              = 그 카테고리의 문자 수 (5.3.3.3 대비 항상 ≈3.42배 — 토큰당 평균 글자수)
+```
+
+관측된 카테고리 8종: `system_prompt` · `tools` · `rules` · `skills` · `mcp` ·
+`subagents` · `summarized_conversation` · `conversation`.
+
+**항등식 검증(전수)**: 이진 blob 1,068개 중 586개가 이 구조를 갖고, **586개 전부에서
+`Σ(카테고리별 5.3.3.3) == 5.1`이 정확히 일치**합니다(불일치 0). 예시(한 대화, 세
+시점 스냅샷):
+
+```text
+system_prompt 617 + tools 8460 + rules 7093 + skills 2797 + mcp 1240 +
+subagents 601 + summarized_conversation 0 + conversation 1825 = 22633 == 5.1
+```
+
+`window size`(5.2)는 관측 586개 중 583개가 200000, 3개가 256000 — 모델별 컨텍스트
+창 크기로 보입니다(200K은 Claude 계열 창 크기와 일치). `5.1`(총 토큰) 관측 범위는
+13,326~186,654입니다.
+
+`summarized_conversation` 카테고리는 관측된 586개 전부에서 0입니다 — 이 대화들에서
+아직 컴팩션(요약)이 일어나지 않았다는 뜻으로 읽힙니다. 값이 0이면 `5.3.3.3` 필드
+자체가 와이어에서 생략됩니다(proto3 기본값 생략 규칙과 일치) — 그래서 스캐너가
+"없으면 0"으로 채워 합을 계산합니다.
+
+`conversation` 카테고리는 같은 대화의 연속 스냅샷에서 1825 → 1825 → 3593 → 3593 →
+6958 → 6958처럼 **단조 비감소**하고, 나머지 카테고리(`system_prompt`/`tools`/`rules`/
+`skills`/`mcp`/`subagents`)는 같은 구간에서 값이 고정입니다 — 대화가 길어질수록 그
+차이만큼 `conversation` 칸이 자라는 모양이 정확히 일관됩니다. 값이 두 번씩 반복되는
+것은(1825가 두 blob에 연속으로) 같은 스냅샷이 서로 다른 blob(예: 요청 시작/종료)에
+중복 기록되기 때문으로 보이고, 이 중복은 [decisions.md](./decisions.md)의 재집계
+결정에서 다룹니다.
+
+**이게 대답하는 것과 대답하지 못하는 것.** 이 구조는 "그 시점 컨텍스트 창에 무엇이
+얼마나 들어있나"(구성 스냅샷)를 답합니다. Codex/Claude/Gemini가 주는 "이 요청이 입력
+몇 개·출력 몇 개를 썼나"(요청 단위 델타)와는 다른 종류입니다. `conversation` 칸의
+증가량을 턴 사이 델타로 쓸 수는 있지만, 그 델타는 사용자 메시지와 어시스턴트 응답을
+가르지 않고 합쳐서 담습니다 — Antigravity의 `1.9.10.1`이 "누적 컨텍스트 크기"였고
+소비 토큰이 아니었던 것과 같은 성격의 주의가 필요합니다
+([antigravity.md](../gemini/antigravity.md)의 "`1.9.10.*` — 컨텍스트 크기(소비 토큰
+아님)" 절, 특히 "합산 금지" 문단).
+
+재현: `node scripts/probe-cursor.mjs`.
+
 ## 확인되지 않은 것
-
-### 토큰 수 필드 — 평문 JSON 전수 스캔에서 0건
-
-3,629개 blob(대화 32개) 전체를 `role`이 있는 JSON으로 파싱해 `/token/i` 정규식으로
-훑었습니다. 매치 66건 전부가 같은 키 하나, `"__contextReadToken"`이었고, 이건 **컨텍스트
-읽기 API의 페이지네이션 커서**로 보입니다(값이 짧은 불투명 문자열이고 반복 조회에
-쓰임) — 토큰 **수**가 아니라 토큰(token)이라는 낱말이 겹친 다른 개념입니다.
-`inputTokens` · `outputTokens` · `promptTokens` · `totalTokens` · `tokenUsage` ·
-`usage":{` 패턴은 0건입니다. `%APPDATA%\Cursor\User`와 `~/.cursor`의 다른 JSON
-파일(`statsig-cache.json`, `settings.json` 등)에서도 같은 패턴을 찾았지만 매치는
-feature-flag 설정값(`tokenUsageThresholdPercentage`) 하나뿐이었고, 실측된 사용량이
-아니라 SDK가 내려받은 설정입니다.
-
-### 이진 blob의 필드 의미 — 1차 스캔(표본 12개)에서 후보 없음, 확정 아님
-
-일반 wire-scanner로 12개 이진 blob을 펼쳐 필드 번호·값을 전부 봤습니다. 도구 호출
-시작/종료 시각, 클라이언트 타입, 타임존, grep 패턴, 파일 목록 외에 토큰 수처럼 보이는
-정수 필드는 없었습니다. 그러나 **agy 조사에서 이미 겪은 그대로**, 표본 12개는 근거로
-삼기엔 너무 적고, 이번 스캔은 varint(wire 0)·length-delimited(wire 2) 재귀만 최소
-구현으로 훑은 것이라 필드 경로별 통계(최소/최대/단조성/조각-합 후보)까지는 내지
-않았습니다. **"없다"가 아니라 "12개 표본에서는 못 찾았다"로만 남깁니다.**
-[decisions.md](./decisions.md)의 Phase 0가 `probe-antigravity.mjs`와 같은 방식의
-전수 조사를 다음 단계로 둡니다.
 
 ### 개별 메시지 단위 타임스탬프·모델
 
@@ -184,8 +238,20 @@ blob 저장소 전체**이므로 실수로 테이블을 통째로 읽으면 그�
 
 ## 참고: 실측에 쓴 스크립트
 
-이 문서의 수치는 임시 스크립트(`node --experimental-sqlite`, 이 저장소에 커밋하지
-않음)로 냈습니다. 재현 가능한 형태로 남기는 첫 산출물이
-[decisions.md](./decisions.md)의 `scripts/probe-cursor.mjs`입니다 —
-`scripts/probe-antigravity.mjs`와 같은 목적(필드 번호·통계만 출력, 본문 금지)으로
-Cursor의 이진 blob을 훑습니다.
+1차 조사(표본 12개, "확인되지 않음"으로 결론 냈던 쪽)는 임시 스크립트로 냈습니다.
+**2차 조사(정정, 컨텍스트 breakdown을 찾은 쪽)는 `scripts/probe-cursor.mjs`로
+재현 가능합니다** — `scripts/probe-antigravity.mjs`와 같은 방법(필드 번호·통계만
+출력, 평문 blob은 첫 바이트로 걸러 절대 열지 않음)으로 이진 blob **전체**를
+훑고, varint 필드 경로별 count/min/max/단조성과 "조각 합 == 총합" 후보를 냅니다.
+
+```bash
+node scripts/probe-cursor.mjs
+# NYANG_CURSOR_HOME=/path node scripts/probe-cursor.mjs        (~/.cursor 대체)
+# NYANG_CURSOR_APPDATA=/path node scripts/probe-cursor.mjs     (Cursor User 데이터 대체)
+```
+
+실측 규모(2026-08-25, 이 머신): CLI 대화 32개 · blob 1,642개(평문 574 · 이진 1,068) ·
+`5.1`/`5.3.3[]` breakdown 있는 blob 586개 · 항등식 불일치 0건. IDE 쪽
+`cursorDiskKV`(agentKv:blob)는 이번 실행에서 6행만 잡혔는데, 이 스크립트가 도는 동안
+Cursor IDE가 `state.vscdb`를 잠그고 있었을 가능성이 있어 **미확인으로 남깁니다** —
+IDE 프로세스를 닫고 재실행해 확인하는 것이 다음 조사 항목입니다.
