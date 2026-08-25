@@ -22,124 +22,119 @@
   <circle cx="22" cy="350" r="3" fill="#8a8078" opacity="0.45" />
 
   <text x="172" y="40" font-size="17" fill="#302b28" font-weight="bold" text-anchor="start">상세 내역</text>
-  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">토큰이 뭐가 많았고 왜 많았나 — 요청·도구 호출 단위</text>
+  <text x="172" y="58" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="start">프로젝트(cwd) → 세션 → 도구 — 토큰량 중심</text>
   <rect x="796" y="30" width="82" height="20" rx="10" fill="#f4eee5" /><text x="837" y="44" font-size="9" fill="#8a8078" font-weight="normal" text-anchor="middle">provider: Claude</text>
 
-  <!-- 최근 프로젝트 5개 (최근 작업 순) -->
+  <!-- 1층: 최근 프로젝트 5개 (cwd 귀속, 최근 작업 순) -->
   <rect x="172" y="76" width="706" height="58" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
-  <text x="186" y="96" font-size="10" fill="#8a8078" font-weight="normal" text-anchor="start">최근 작업 프로젝트 (최근 순 · 최대 5개)</text>
+  <text x="186" y="96" font-size="10" fill="#8a8078" font-weight="normal" text-anchor="start">최근 작업 프로젝트 (cwd 귀속 · 최근 순 · 최대 5개)</text>
   <rect x="186" y="104" width="128" height="22" rx="11" fill="#efe6d5" /><text x="250" y="119" font-size="9.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">luna-playground</text>
   <rect x="322" y="104" width="106" height="22" rx="11" fill="#f4eee5" /><text x="375" y="119" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="middle">mes-portal</text>
   <rect x="436" y="104" width="106" height="22" rx="11" fill="#f4eee5" /><text x="489" y="119" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="middle">nyang-docs</text>
   <rect x="550" y="104" width="100" height="22" rx="11" fill="#f4eee5" /><text x="600" y="119" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="middle">agent-lab</text>
   <rect x="658" y="104" width="92" height="22" rx="11" fill="#f4eee5" /><text x="704" y="119" font-size="9.5" fill="#8a8078" font-weight="normal" text-anchor="middle">sql-skill</text>
 
-  <!-- 세션 선택 + 요약 -->
-  <rect x="172" y="144" width="706" height="66" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
-  <rect x="186" y="158" width="240" height="38" rx="9" fill="#efe6d5" />
-  <text x="198" y="174" font-size="9.5" fill="#8a6f3d" font-weight="bold" text-anchor="start">세션 8f2c…9b1e · 08-24 23:15</text>
-  <text x="198" y="188" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">620.8K 토큰 · 9요청 · 도구 13회 ▾</text>
-  <text x="452" y="172" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">총 토큰</text>
-  <text x="452" y="190" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">620.8K</text>
-  <text x="548" y="172" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">도구 결과 크기</text>
-  <text x="548" y="190" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">38.8K자</text>
-  <text x="662" y="172" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">최대 원인 도구</text>
-  <text x="662" y="190" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">Read 31.6K자</text>
-  <text x="784" y="172" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="start">측정 품질</text>
-  <text x="784" y="190" font-size="12" fill="#302b28" font-weight="bold" text-anchor="start">local_exact</text>
+  <!-- 2층: 세션 선택 + 3층: 도구별 토큰량 -->
+  <rect x="172" y="144" width="706" height="88" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <rect x="186" y="160" width="240" height="56" rx="9" fill="#efe6d5" />
+  <text x="198" y="178" font-size="9.5" fill="#8a6f3d" font-weight="bold" text-anchor="start">세션 8f2c…9b1e · 08-24 23:15</text>
+  <text x="198" y="192" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">620.8K 토큰 · 9요청 · 도구 13회</text>
+  <text x="198" y="206" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">최근 세션 목록에서 선택 ▾</text>
+  <text x="452" y="166" font-size="10" fill="#302b28" font-weight="bold" text-anchor="start">도구별 토큰량</text>
+  <text x="530" y="166" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">호출 비율 배분 — 추정 배분</text>
+  <rect x="452" y="174" width="412" height="12" rx="6" fill="#f4eee5" />
+  <rect x="452" y="174" width="272" height="12" rx="6" fill="#c9a15c" />
+  <rect x="724" y="174" width="136" height="12" fill="#8a6f3d" />
+  <rect x="856" y="174" width="8" height="12" rx="4" fill="#a05a4a" />
+  <text x="452" y="202" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">● 채팅 409.8K (66%)   ● Bash 132.6K   ● Read 61.4K   ● Write 9.4K   ● MCP 7.6K</text>
+  <text x="452" y="218" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">합계는 원장의 세션 합계와 일치해야 합니다 — 배분이 새 숫자를 만들지 않습니다</text>
 
-  <!-- 상세 내역 표 -->
-  <rect x="172" y="220" width="706" height="298" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
-  <text x="186" y="242" font-size="11" fill="#302b28" font-weight="bold" text-anchor="start">요청·도구 호출 내역</text>
-  <text x="186" y="256" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">원인 = 직전 도구 결과가 이 요청 프롬프트에 들어간 양(문자수). 본문은 읽지 않고 크기만 잽니다</text>
-  <rect x="676" y="232" width="30" height="18" rx="9" fill="#f4eee5" /><text x="691" y="245" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">20</text>
-  <rect x="710" y="232" width="30" height="18" rx="9" fill="#f4eee5" /><text x="725" y="245" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">50</text>
-  <rect x="744" y="232" width="34" height="18" rx="9" fill="#efe6d5" /><text x="761" y="245" font-size="8.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">100</text>
-  <rect x="782" y="232" width="40" height="18" rx="9" fill="#f4eee5" /><text x="802" y="245" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">1000</text>
-  <text x="852" y="245" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">행 수</text>
+  <!-- 4층: 요청 행 표 -->
+  <rect x="172" y="242" width="706" height="252" rx="12" fill="#fffdf9" stroke="#ddd4c8" />
+  <text x="186" y="264" font-size="11" fill="#302b28" font-weight="bold" text-anchor="start">요청 행</text>
+  <text x="240" y="264" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">기본: 합계 상위(cost) · 시간순 전환 가능</text>
+  <rect x="676" y="252" width="30" height="18" rx="9" fill="#f4eee5" /><text x="691" y="265" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">20</text>
+  <rect x="710" y="252" width="30" height="18" rx="9" fill="#f4eee5" /><text x="725" y="265" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">50</text>
+  <rect x="744" y="252" width="34" height="18" rx="9" fill="#efe6d5" /><text x="761" y="265" font-size="8.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">100</text>
+  <rect x="782" y="252" width="40" height="18" rx="9" fill="#f4eee5" /><text x="802" y="265" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="middle">1000</text>
+  <text x="852" y="265" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="middle">행 수</text>
 
-  <line x1="186" y1="266" x2="864" y2="266" stroke="#ddd4c8" stroke-width="1" />
-  <text x="188" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">시각</text>
-  <text x="238" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">턴</text>
-  <text x="262" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">도구 (호출)</text>
-  <text x="404" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">결과 크기</text>
-  <text x="478" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">신규 프롬프트</text>
-  <text x="548" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">캐시 읽기</text>
-  <text x="602" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">출력</text>
-  <text x="624" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">왜 많았나 (원인 막대)</text>
-  <text x="847" y="280" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="middle">내용</text>
-  <line x1="186" y1="288" x2="864" y2="288" stroke="#ddd4c8" stroke-width="1" />
+  <line x1="186" y1="276" x2="864" y2="276" stroke="#ddd4c8" stroke-width="1" />
+  <text x="188" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">시각</text>
+  <text x="240" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">턴</text>
+  <text x="266" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">도구 (호출)</text>
+  <text x="500" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">신규 프롬프트</text>
+  <text x="580" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">캐시 읽기</text>
+  <text x="644" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">출력</text>
+  <text x="730" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="end">합계</text>
+  <text x="800" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="middle">품질</text>
+  <text x="847" y="290" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="middle">내용</text>
+  <line x1="186" y1="298" x2="864" y2="298" stroke="#ddd4c8" stroke-width="1" />
 
-  <rect x="182" y="294" width="686" height="28" rx="7" fill="#efe6d5" opacity="0.55" />
-  <text x="188" y="312" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="start">23:15:42</text>
-  <text x="238" y="312" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="312" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="start">(첫 요청 · 도구 없음)</text>
-  <text x="404" y="312" font-size="8.5" fill="#8a8078" font-weight="normal" text-anchor="end">—</text>
-  <text x="478" y="312" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">58.4K</text>
-  <text x="548" y="312" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">0</text>
-  <text x="602" y="312" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">330</text>
-  <rect x="624" y="303" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="303" width="134" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="312" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">시스템+프롬프트</text>
-  <text x="847" y="312" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">—</text>
+  <rect x="182" y="304" width="686" height="26" rx="7" fill="#efe6d5" opacity="0.55" />
+  <text x="188" y="321" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="start">23:17:36</text>
+  <text x="240" y="321" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="321" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="start">Write ×1</text>
+  <text x="500" y="321" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">3.9K</text>
+  <text x="580" y="321" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">81.9K</text>
+  <text x="644" y="321" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">219</text>
+  <text x="730" y="321" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">86.0K</text>
+  <text x="800" y="321" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <rect x="830" y="311" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="321" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
 
-  <text x="188" y="340" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:17:05</text>
-  <text x="238" y="340" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="340" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Read ×2</text>
-  <text x="404" y="340" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">17.6K자</text>
-  <text x="478" y="340" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">10.0K</text>
-  <text x="548" y="340" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">71.9K</text>
-  <text x="602" y="340" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">3.8K</text>
-  <rect x="624" y="331" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="331" width="87" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="340" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">직전 Read 결과</text>
-  <rect x="830" y="330" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="340" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
+  <text x="188" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:17:05</text>
+  <text x="240" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Read ×2</text>
+  <text x="500" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">10.0K</text>
+  <text x="580" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">71.9K</text>
+  <text x="644" y="347" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">3.8K</text>
+  <text x="730" y="347" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">85.7K</text>
+  <text x="800" y="347" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <rect x="830" y="337" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="347" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
 
-  <text x="188" y="368" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:30</text>
-  <text x="238" y="368" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="368" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Read ×1 · Bash ×1</text>
-  <text x="404" y="368" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">14.0K자</text>
-  <text x="478" y="368" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">7.7K</text>
-  <text x="548" y="368" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">62.9K</text>
-  <text x="602" y="368" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">732</text>
-  <rect x="624" y="359" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="359" width="69" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="368" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">Read·Bash 결과</text>
-  <rect x="830" y="358" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="368" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
+  <text x="188" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:47</text>
+  <text x="240" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">mcp github ▸ get_me ×1</text>
+  <text x="500" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">1.3K</text>
+  <text x="580" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">70.6K</text>
+  <text x="644" y="373" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">540</text>
+  <text x="730" y="373" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">72.4K</text>
+  <text x="800" y="373" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <rect x="830" y="363" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="373" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
 
-  <text x="188" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:17:36</text>
-  <text x="238" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Write ×1</text>
-  <text x="404" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">198자</text>
-  <text x="478" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">3.9K</text>
-  <text x="548" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">81.9K</text>
-  <text x="602" y="396" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">219</text>
-  <rect x="624" y="387" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="387" width="13" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="396" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">직전 Write 결과</text>
-  <rect x="830" y="386" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="396" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
+  <text x="188" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:30</text>
+  <text x="240" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Read ×1 · Bash ×1</text>
+  <text x="500" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">7.7K</text>
+  <text x="580" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">62.9K</text>
+  <text x="644" y="399" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">732</text>
+  <text x="730" y="399" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">71.3K</text>
+  <text x="800" y="399" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <rect x="830" y="389" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="399" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
 
-  <text x="188" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:07</text>
-  <text x="238" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Bash ×2</text>
-  <text x="404" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">2.8K자</text>
-  <text x="478" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">1.7K</text>
-  <text x="548" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">59.3K</text>
-  <text x="602" y="424" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">583</text>
-  <rect x="624" y="415" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="415" width="24" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="424" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">직전 Bash 결과</text>
-  <rect x="830" y="414" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="424" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
+  <text x="188" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:07</text>
+  <text x="240" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">Bash ×2</text>
+  <text x="500" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">1.7K</text>
+  <text x="580" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">59.3K</text>
+  <text x="644" y="425" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">583</text>
+  <text x="730" y="425" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">61.6K</text>
+  <text x="800" y="425" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <rect x="830" y="415" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="425" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
 
-  <text x="188" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:16:47</text>
-  <text x="238" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
-  <text x="262" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">mcp github ▸ get_me ×1</text>
-  <text x="404" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">933자</text>
-  <text x="478" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">1.3K</text>
-  <text x="548" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">70.6K</text>
-  <text x="602" y="452" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">540</text>
-  <rect x="624" y="443" width="140" height="10" rx="5" fill="#f4eee5" /><rect x="624" y="443" width="9" height="10" rx="5" fill="#c9a15c" />
-  <text x="770" y="452" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">직전 MCP 결과</text>
-  <rect x="830" y="442" width="34" height="14" rx="7" fill="#efe6d5" /><text x="847" y="452" font-size="7.5" fill="#8a6f3d" font-weight="bold" text-anchor="middle">보기</text>
+  <text x="188" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">23:15:42</text>
+  <text x="240" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">1</text>
+  <text x="266" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="start">(도구 없음 — 채팅)</text>
+  <text x="500" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">58.4K</text>
+  <text x="580" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">0</text>
+  <text x="644" y="451" font-size="8.5" fill="#302b28" font-weight="normal" text-anchor="end">330</text>
+  <text x="730" y="451" font-size="8.5" fill="#302b28" font-weight="bold" text-anchor="end">58.7K</text>
+  <text x="800" y="451" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">exact</text>
+  <text x="847" y="451" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="middle">—</text>
 
-  <line x1="186" y1="466" x2="864" y2="466" stroke="#ddd4c8" stroke-width="1" />
-  <text x="186" y="484" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">9행 / 전체 9행 · 원본 재독(저장 안 함) · 원본 없으면 "원본 없음"으로 표기</text>
-  <text x="186" y="500" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">정렬: 시각(기본) · 신규 프롬프트 · 결과 크기 · 출력 — 세션 흐름 표와 같은 table-sort 규칙</text>
+  <line x1="186" y1="464" x2="864" y2="464" stroke="#ddd4c8" stroke-width="1" />
+  <text x="186" y="482" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">9행 / 전체 9행 · 원본 재독(저장 안 함) · 원본 없으면 "원본 없음"으로 표기</text>
+
   <text x="186" y="516" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">[보기] 클릭 시에만 그 호출 하나의 본문을 원본에서 읽어 팝업으로 표시 — 목록 응답에 본문 없음, 저장 없음, 가림 프로젝트는 비활성</text>
 
   <!-- 내용 보기 팝업(모달) — [보기] 클릭 시에만 열림 -->
