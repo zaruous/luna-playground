@@ -152,7 +152,11 @@ export function createTurnDetailBuilder({
       const delta = event.delta ?? {};
       const prompt = promptSideTokens(provider, delta);
       const output = Number(delta.outputTokens) || 0;
-      const tokens = prompt + output;
+      // prompt + output 이 아니라 파서가 이미 낸 totalTokens 을 그대로 씁니다.
+      // Claude/Codex 는 output 이 reasoning 을 포함해 두 값이 같지만, Gemini 는
+      // thoughts 가 output **밖**에 있어(accounting.mjs 머리말 참고) prompt+output
+      // 을 쓰면 그 턴의 reasoning 만큼 조용히 빠집니다 — 실측으로 잡힌 결함입니다.
+      const tokens = Number(delta.totalTokens) || 0;
       totals.promptTokens += prompt;
       totals.outputTokens += output;
       totals.reasoningTokens += Number(delta.reasoningTokens) || 0;

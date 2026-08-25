@@ -1447,7 +1447,8 @@ export class UsageStore {
              COALESCE(SUM(e.cached_input_tokens), 0) AS cached_input_tokens,
              COALESCE(SUM(e.cache_write_input_tokens), 0) AS cache_write_input_tokens,
              COALESCE(SUM(e.output_tokens), 0) AS output_tokens,
-             COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning_tokens
+             COALESCE(SUM(e.reasoning_tokens), 0) AS reasoning_tokens,
+             COALESCE(SUM(e.total_tokens), 0) AS total_tokens
       FROM usage_events e
       LEFT JOIN turns t
         ON t.provider = e.provider AND t.session_id = e.session_id
@@ -1469,7 +1470,12 @@ export class UsageStore {
         cachedInputTokens: Number(row.cached_input_tokens),
         cacheWriteInputTokens: Number(row.cache_write_input_tokens),
       });
-      const turnTokens = turnPromptTokens + Number(row.output_tokens);
+      // turnPromptTokens + output 이 아니라 원장의 total_tokens 합을 그대로
+      // 씁니다. Claude/Codex 는 output 이 reasoning 을 포함해 두 계산이 같지만,
+      // Gemini 는 thoughts 가 output 밖에 있어(accounting.mjs 참고)
+      // prompt+output 을 쓰면 그 턴의 reasoning 만큼 조용히 빠집니다 — 실측
+      // 결함(비싼 턴 표·가장 비싼 턴 카드·단계별 배분이 전부 이 값을 씁니다).
+      const turnTokens = Number(row.total_tokens);
       for (const [phase, value] of splitTokensByPhase(providerId, toolCounts, turnTokens)) {
         phaseTotals.set(phase, (phaseTotals.get(phase) ?? 0) + value);
       }
@@ -1643,7 +1649,10 @@ export class UsageStore {
       ledger: {
         tokens,
         promptTokens: promptSideTokens(providerId, tokens),
-        totalTokens: promptSideTokens(providerId, tokens) + tokens.outputTokens,
+        // promptSideTokens(...) + output 로 재구성하지 않고 원장의 total_tokens
+        // 을 그대로 씁니다 — Gemini 는 reasoning 이 output 밖에 있어 재구성하면
+        // 그만큼 빠집니다(같은 결함을 getSessionFlow 의 턴 토큰에서도 고쳤습니다).
+        totalTokens: tokens.totalTokens,
         requestCount: tokens.eventCount,
         firstAt: summary.first_at,
         lastAt: summary.last_at,
@@ -1698,7 +1707,10 @@ export class UsageStore {
       ledger: {
         tokens,
         promptTokens: promptSideTokens(providerId, tokens),
-        totalTokens: promptSideTokens(providerId, tokens) + tokens.outputTokens,
+        // promptSideTokens(...) + output 로 재구성하지 않고 원장의 total_tokens
+        // 을 그대로 씁니다 — Gemini 는 reasoning 이 output 밖에 있어 재구성하면
+        // 그만큼 빠집니다(같은 결함을 getSessionFlow 의 턴 토큰에서도 고쳤습니다).
+        totalTokens: tokens.totalTokens,
         requestCount: tokens.eventCount,
         turnCount: Number(summary.turn_count) || 0,
         firstAt: summary.first_at,
