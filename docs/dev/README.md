@@ -1,6 +1,6 @@
 # NyangTracker 개발 계획 (docs/dev)
 
-현재 코드에는 **Codex · Claude Code · Gemini CLI 어댑터**가 구현돼 있고(계획한 4종 중 셋 — Cursor는 M6), 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다.
+현재 코드에는 **Codex · Claude Code · Gemini CLI 어댑터**가 구현돼 있고(계획한 4종 중 셋 — Cursor는 M6), 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다. Cursor는 M6a(로컬 전용, [cursor/](./cursor/README.md))와 M6b(Admin API, 기존 §5.3)로 갈라졌고 둘 다 아직 미구현입니다.
 
 이 디렉터리는 그 다음 단계를 다룹니다. `docs/` 상위 문서가 **현재 구현된 것**을 기술하는 반면, `docs/dev/`는 **아직 구현하지 않은 것**을 기술합니다 — 다만 완료된 마일스톤(M1~M3 · M5 · M8 · M9 · M10)은 문서에 완료 표시를 남겨 무엇이 실제로 들어갔는지 되짚을 수 있게 합니다. M4는 동기화 절반만 들어갔고 완료 기준 하나가 미달이라 "완료"로 적지 않습니다.
 
@@ -12,6 +12,7 @@
 | [token-measurement-survey.md](./token-measurement-survey.md) | GitHub 오픈소스 트래커들의 토큰 측정 알고리즘 분석과 그로부터 도출한 설계 규칙 |
 | [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude·Gemini 구현 완료) |
 | [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) — 실측, agy(Antigravity CLI) 감지, 포맷·설계 |
+| [cursor/](./cursor/README.md) | Cursor 로컬 트랙(M6a) — 원격 사용량 배제, 로컬 저장소 실측과 메뉴별 적용 계획 (**계획 단계 — 미구현**) |
 | [fix-plan.md](./fix-plan.md) | 열린 결함 다섯 개의 수정 순서. 실측으로 세웠고, 재는 과정에서 감사 당시 서술 여덟 개가 틀렸음이 드러나 그 정정도 함께 담았습니다 |
 | [store-extensions.md](./store-extensions.md) | 위 설계를 받기 위한 SQLite 스키마·쿼리 확장 (§1·§8 구현 완료) |
 
