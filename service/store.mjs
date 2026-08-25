@@ -1338,6 +1338,24 @@ export class UsageStore {
     return merged;
   }
 
+  // getSessionRanking 은 total_tokens 상위 limit 개만 돌려줍니다 — 화면 "관측
+  // 세션" 카드가 그 반환 길이를 그대로 쓰면, 기간에 실제 세션이 limit 개를
+  // 넘는 순간 서로 다른 기간이 전부 같은 숫자(limit)로 보입니다(예: 이번 달
+  // 111개 · 최근 30일 127개 · 전체 182개가 셋 다 "40"으로 찍힘 — 최근 7일만
+  // 35개라 상한 아래라 우연히 맞게 보였습니다). 그래서 상한 없는 진짜 개수를
+  // 별도로 셉니다.
+  getSessionCount({ provider = null, since = null, until = null } = {}) {
+    const { where, args } = this.#usageFilter({ provider, since, until });
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT 1 FROM usage_events
+        ${where}
+        GROUP BY provider, session_id
+      )
+    `).get(...args);
+    return Number(row?.count) || 0;
+  }
+
   // 세션 순위. 파생 지표의 정의는 docs/dev/menus/session.md 에 못박아 두었습니다.
   getSessionRanking({ provider = null, since = null, until = null, limit = 30 } = {}) {
     const { where, args } = this.#usageFilter({ provider, since, until });

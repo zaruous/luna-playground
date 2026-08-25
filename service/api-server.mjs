@@ -427,13 +427,19 @@ export class UsageApiServer {
     // 세션 흐름 화면(docs/dev/menus/session.md). sessionId 는 provider 가 만든
     // UUID 이므로 URL 에 넣어도 경로가 새지 않습니다.
     if (req.method === 'GET' && pathname === `${API_PREFIX}/sessions`) {
+      const sessionFilter = {
+        provider: query.get('provider'),
+        since: this.#since(query),
+        until: query.get('until'),
+      };
       json(res, 200, {
         sessions: this.usageEngine.store.getSessionRanking({
-          provider: query.get('provider'),
-          since: this.#since(query),
-          until: query.get('until'),
+          ...sessionFilter,
           limit: Number(query.get('limit')) || 30,
         }),
+        // 반환된 sessions 는 상위 limit 개뿐입니다. 화면이 그 길이를 "이 기간의
+        // 세션 수"로 읽지 않도록 상한 없는 진짜 개수를 함께 보냅니다.
+        totalCount: this.usageEngine.store.getSessionCount(sessionFilter),
       });
       return;
     }
