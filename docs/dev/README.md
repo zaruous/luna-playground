@@ -14,6 +14,8 @@
 | [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) — 실측, agy(Antigravity CLI) 감지, 포맷·설계 |
 | [cursor/](./cursor/README.md) | Cursor 로컬 트랙(M6a) — 원격 사용량 배제, 로컬 저장소 실측과 메뉴별 적용 계획 (**계획 단계 — 미구현**) |
 | [cursor/기능적용가능성.md](./cursor/기능적용가능성.md) | 화면/기능 단위로 Cursor에 이번 M6a를 적용할 수 있는지, LLM별 기능지원표.md와 같은 O/△/X 양식으로 정리한 표 |
+| [claude/기능적용가능성.md](./claude/기능적용가능성.md) | `src/views/*.jsx`를 전부 읽어 화면 요소마다 Claude가 실제로 맞게 동작하는지 O/△/X로 정리(구현된 provider라 "적용 가능한가"가 아니라 "화면 전제와 실제 데이터가 어긋나는 자리"를 찾는 문서) |
+| [codex/기능적용가능성.md](./codex/기능적용가능성.md) | 같은 방식의 Codex 판 — `INSERT OR IGNORE` 원장 결함이 어느 화면 요소로 번지는지까지 추적 |
 | [LLM별 기능지원표.md](./LLM별%20기능지원표.md) | Claude/Codex/Gemini/Cursor 4종의 토큰 사용량 기능 O/X 매트릭스(23개 기능) |
 | [LLM별 기능지원표 상세.md](./LLM별%20기능지원표%20상세.md) | 위 표 각 행의 근거 — 파일:줄 인용, 실측 수치, 문서 인용 |
 | [fix-plan.md](./fix-plan.md) | 열린 결함 다섯 개의 수정 순서. 실측으로 세웠고, 재는 과정에서 감사 당시 서술 여덟 개가 틀렸음이 드러나 그 정정도 함께 담았습니다 |
