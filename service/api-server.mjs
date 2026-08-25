@@ -3,12 +3,17 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { catCommentPayload } from './cat-comments.mjs';
-import { readTurnDetail } from './providers/turn-detail-readers.mjs';
+import { readSessionRecords, readTurnDetail } from './providers/turn-detail-readers.mjs';
+import { readToolCallContent } from './providers/tool-content.mjs';
 
 const API_PREFIX = '/api/v1';
 const HOOK_ROUTE = new RegExp(`^${API_PREFIX}/providers/([a-z0-9_-]+)/hooks$`);
 const SESSION_FLOW_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/flow$`);
 const SESSION_TURN_DETAIL_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/turns/(\\d+)/detail$`);
+const SESSION_RECORDS_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/records$`);
+// 도구 호출 id 는 provider 가 만든 불투명한 손잡이입니다. 경로에 들어가므로
+// 모양을 좁혀 둡니다 — 경로 조각이 파일 이름으로 새는 것을 막습니다.
+const TOOL_CONTENT_ROUTE = new RegExp(`^${API_PREFIX}/sessions/([^/]+)/tool-calls/([A-Za-z0-9_-]{1,200})/content$`);
 const CONTENT_TYPES = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -34,7 +39,7 @@ function json(res, statusCode, body) {
 }
 
 // 프로젝트 라우트: 키는 16자리 해시만 허용합니다 (원본 경로 URL 유입 차단).
-const PROJECT_ROUTE = new RegExp(`^${API_PREFIX}/projects/([a-f0-9]{16})(/alias)?$`);
+const PROJECT_ROUTE = new RegExp(`^${API_PREFIX}/projects/([a-f0-9]{16})(/alias|/sessions)?$`);
 
 // 별칭 본문만 받으므로 상한을 작게 둡니다.
 async function readJsonBody(req, limitBytes = 8192) {
@@ -126,6 +131,48 @@ function turnDetailPayload(source, detail) {
     recordCount: detail.recordCount,
     duplicateCount: detail.duplicateCount,
     truncated: detail.truncated,
+    source: {
+      files: detail.scanned.map((file) => ({
+        path: redacted ? null : file.path,
+        label: file.label,
+        exists: file.exists,
+        lines: file.lines,
+        bytes: file.bytes,
+      })),
+      missing: detail.scanned.filter((file) => !file.exists).length,
+      total: detail.scanned.length,
+    },
+  };
+}
+
+// 상세 내역 응답 조립. 가림 규칙은 턴 상세와 같습니다 — 토큰·도구 내역은
+// 그대로 나오되 경로 문자열은 나가지 않습니다.
+function sessionRecordsPayload(source, detail) {
+  const redacted = Boolean(source.redacted);
+  return {
+    provider: source.provider,
+    sessionId: source.sessionId,
+    projectKey: source.projectKey,
+    projectName: source.projectName,
+    redacted,
+    ledger: source.ledger,
+    measured: detail.totals,
+    supported: detail.supported,
+    available: detail.available,
+    reason: detail.reason,
+    filesMeasured: detail.filesMeasured ?? true,
+    // 파일 가지는 경로를 그대로 담고 있으므로 가림 상태에서는 통째로 뺍니다.
+    toolBreakdown: redacted ? detail.toolBreakdown.filter((row) => row.key !== 'file') : detail.toolBreakdown,
+    files: redacted ? [] : detail.files,
+    records: redacted
+      ? detail.records.map((row) => (row.paths ? { ...row, paths: {} } : row))
+      : detail.records,
+    recordCount: detail.recordCount,
+    duplicateCount: detail.duplicateCount,
+    truncated: detail.truncated,
+    collectionTruncated: detail.collectionTruncated,
+    limit: detail.limit,
+    order: detail.order,
     source: {
       files: detail.scanned.map((file) => ({
         path: redacted ? null : file.path,
@@ -425,6 +472,69 @@ export class UsageApiServer {
       json(res, 200, turnDetailPayload(source, detail));
       return;
     }
+    // 상세 내역(프로젝트 → 세션 → 도구). 턴 상세와 같은 이유로 원본을 그
+    // 자리에서 다시 읽습니다 — 다른 점은 턴 필터가 없다는 것뿐입니다.
+    // **본문은 여기서 나가지 않습니다.** 도구 호출의 내용은 아래 전용 라우트가
+    // 사람이 [내용 보기]를 눌렀을 때만 나릅니다(docs/dev/menus/detail.md).
+    const sessionRecordsRoute = pathname.match(SESSION_RECORDS_ROUTE);
+    if (req.method === 'GET' && sessionRecordsRoute) {
+      const source = this.usageEngine.store.getSessionSource({
+        provider: query.get('provider') ?? 'claude',
+        sessionId: decodeURIComponent(sessionRecordsRoute[1]),
+      });
+      if (!source) {
+        json(res, 404, { error: 'session_not_found' });
+        return;
+      }
+      const detail = await readSessionRecords({
+        provider: source.provider,
+        sourcePaths: source.sourcePaths,
+        limit: query.get('limit'),
+        order: query.get('order'),
+      });
+      json(res, 200, sessionRecordsPayload(source, detail));
+      return;
+    }
+    // 도구 호출 내용. 본문이 나가는 **유일한** 통로입니다. 요청한 호출 하나의
+    // input·결과만 담고, 저장하지 않으며, 가림된 프로젝트에서는 거부합니다.
+    const toolContentRoute = pathname.match(TOOL_CONTENT_ROUTE);
+    if (req.method === 'GET' && toolContentRoute) {
+      const source = this.usageEngine.store.getSessionSource({
+        provider: query.get('provider') ?? 'claude',
+        sessionId: decodeURIComponent(toolContentRoute[1]),
+      });
+      if (!source) {
+        json(res, 404, { error: 'session_not_found' });
+        return;
+      }
+      // 가림은 "이 프로젝트가 무엇인지 보이지 않게 한다" 입니다. 경로만 가리고
+      // 본문을 내주면 가림의 목적이 사라집니다 — 도구 출력에는 파일 내용과
+      // 명령 결과가 그대로 들어 있습니다.
+      if (source.redacted) {
+        json(res, 200, {
+          provider: source.provider,
+          sessionId: source.sessionId,
+          toolUseId: toolContentRoute[2],
+          supported: true,
+          available: false,
+          reason: 'redacted',
+          tool: null, at: null, input: null, result: null, source: null,
+        });
+        return;
+      }
+      const content = await readToolCallContent({
+        provider: source.provider,
+        sourcePaths: source.sourcePaths,
+        toolUseId: toolContentRoute[2],
+      });
+      json(res, 200, {
+        provider: source.provider,
+        sessionId: source.sessionId,
+        toolUseId: toolContentRoute[2],
+        ...content,
+      });
+      return;
+    }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/usage/timeseries`) {
       json(res, 200, this.usageEngine.store.getUsageTimeseries({
         provider: query.get('provider'),
@@ -441,6 +551,16 @@ export class UsageApiServer {
         since: this.#since(query),
         until: query.get('until'),
       }));
+      return;
+    }
+    // 상세 내역 화면의 1층: 최근 **작업한** 프로젝트. 토큰 순이 아니라 마지막
+    // 활동 순입니다 — 토큰 순으로 두면 몇 주 전의 큰 프로젝트가 자리를 차지해
+    // 오늘 만진 프로젝트가 안 보입니다(store 의 getRecentProjects 머리말).
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/projects/recent`) {
+      const limit = Math.min(Math.max(Number(query.get('limit')) || 5, 1), 20);
+      json(res, 200, {
+        projects: this.usageEngine.store.getRecentProjectsAcrossProviders(limit, this.#since(query)),
+      });
       return;
     }
     if (req.method === 'GET' && pathname === `${API_PREFIX}/projects`) {
@@ -483,7 +603,20 @@ export class UsageApiServer {
         else json(res, 200, detail);
         return;
       }
-      if (aliasPath && req.method === 'PUT') {
+      // 상세 내역 화면의 2층: 그 프로젝트의 세션 목록(최근 순). 프로젝트 상세
+      // 전체를 당기지 않는 이유는 여기서 필요한 것이 세션 목록뿐이기 때문입니다.
+      if (aliasPath === '/sessions' && req.method === 'GET') {
+        json(res, 200, {
+          sessions: this.usageEngine.store.getProjectSessions({
+            projectKey,
+            since: this.#since(query),
+            until: query.get('until'),
+            limit: Number(query.get('limit')) || 20,
+          }),
+        });
+        return;
+      }
+      if (aliasPath === '/alias' && req.method === 'PUT') {
         const body = await readJsonBody(req).catch(() => null);
         if (!body || typeof body !== 'object') {
           json(res, 400, { error: 'invalid_body' });

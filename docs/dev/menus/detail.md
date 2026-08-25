@@ -1,6 +1,8 @@
 # 상세 내역 (`detail`)
 
-**현재 상태: 미구현 (설계).** 새 탭입니다.
+**현재 상태: 구현됨.** 화면은 `src/views/DetailView.jsx` + `src/views/ToolContentModal.jsx`,
+수집은 `service/providers/session-records.mjs`, 내용 열람은
+`service/providers/tool-content.mjs` 입니다.
 
 > 개정 이력: 첫 설계에는 "왜 많았나"를 도구 결과 크기(원인 사슬)로 답하는 열이
 > 있었습니다. resume 사본·sidechain·컴팩션 경계 처리가 얹히며 복잡해져 **v1에서
@@ -91,7 +93,7 @@
 아닙니다. **파서는 이 경로를 타지 않습니다**: 뷰어는 원본 파일의 해당 레코드를 직접
 읽는 별도 리더를 쓰고, 파서가 내보내는 이벤트에는 여전히 본문이 없습니다.
 
-## 파서 변경: 한 가지뿐
+## 파서 변경: 한 가지뿐, 그리고 버전은 올리지 않습니다
 
 토큰량 계층은 파서가 이미 내보내는 것(usage·toolCounts·turnIndex)으로 전부
 만들어집니다. 필요한 추가는 **[내용 보기]가 호출을 가리킬 손잡이** 하나입니다:
@@ -100,6 +102,12 @@
 toolActivity 가 도구 이름과 함께 tool_use 블록의 id 를 수집
 → usage 이벤트에 toolCalls: [{ id, tool }]  (이름과 같은 급의 구조 메타데이터, 본문 아님)
 ```
+
+**`CLAUDE_PARSER_VERSION` 은 그대로 2 입니다.** 구현하면서 확인한 것인데, 이
+값을 원장에 저장할 이유가 없기 때문입니다 — 이 화면은 요청 때 원본을 다시 읽고,
+그때 파서가 id 를 즉석에서 만들어 냅니다. 저장하지 않으니 컬럼도, 재해석도,
+버전 게이트도 필요 없습니다. 파서 버전을 올렸다면 기존 로그 전량(실측 785MB)을
+다시 읽어야 했습니다.
 
 결과 크기·원인 추적은 넣지 않습니다. 그래서 resume/sidechain/컴팩션 경계 처리도
 필요 없습니다 — 토큰은 eventKey 중복 제거가 이미 지키고 있습니다.
@@ -169,20 +177,34 @@ getSessionSources({ provider, sessionId })   // 턴 상세가 쓰는 원본 파�
 
 `test/session-records.test.mjs` 로 검사합니다.
 
-- [ ] 도구별 토큰량 합계가 원장의 세션 합계와 일치 (턴 상세의 배분 규칙 재사용 확인)
-- [ ] resume 사본이 있어도 행·합계가 부풀지 않음 (eventKey 중복 제거 승계)
-- [ ] `order=cost` 가 합계 상위 N 을, `order=time` 이 시간순 앞 N 을 주고, 잘리면 `truncated` 와 전체 행 수 표기
-- [ ] 행 상한 20/50/100/1000 이 서버·화면에서 같은 값
-- [ ] records·toolBreakdown 응답에 센티넬(본문) 부재 — 본문은 content 엔드포인트에만
-- [ ] content 요청이 [보기] 클릭(팝업 열기)에서만 발생 — 목록 렌더링이 선요청하지 않음
-- [ ] 팝업을 닫으면 본문이 화면 상태에서 버려지고, 다시 열면 재요청됨
-- [ ] 내용 보기를 호출한 뒤에도 SQLite 바이트에 센티넬 부재 — 열람이 저장을 만들지 않음
-- [ ] content 응답에 `Cache-Control: no-store` 와 256KB 상한이 적용됨
-- [ ] 가림 프로젝트에서 content 가 `reason: 'redacted'` 로 거부되고 버튼 비활성
-- [ ] 원본이 없으면 `available: false, reason: source_missing` — 지어내지 않음
-- [ ] 최근 프로젝트가 최근 작업 순 최대 5개, 가림 규칙 적용
-- [ ] Codex/Gemini/Cursor 는 빈 상세가 아니라 `supported: false` 와 이유
-- [ ] 행의 턴 번호 클릭 시 세션 흐름 화면의 해당 턴이 열림 (focus 인자)
+- [x] 도구별 토큰량 합계가 원장의 세션 합계와 일치 (턴 상세의 배분 규칙 재사용 확인)
+- [x] resume 사본이 있어도 행·합계가 부풀지 않음 (eventKey 중복 제거 승계)
+- [x] `order=cost` 가 합계 상위 N 을, `order=time` 이 시간순 앞 N 을 주고, 잘리면 `truncated` 와 전체 행 수 표기
+- [x] 상한에 걸려도 비용순이면 **가장 비싼 행이 살아남고**, 합계는 잘리기 전 전체로 계산됨
+- [x] 행 상한 20/50/100/1000 이 서버·화면에서 같은 값이고, 목록 밖의 값은 기본값으로 접힘
+- [x] records·toolBreakdown 응답에 센티넬(본문) 부재 — 본문은 content 엔드포인트에만
+- [x] content 요청이 [보기] 클릭(팝업 열기)에서만 발생 — 목록 렌더링이 선요청하지 않음
+- [x] 팝업을 닫으면 본문이 화면 상태에서 버려지고, 다시 열면 재요청됨
+- [x] 내용 보기를 호출한 뒤에도 SQLite 바이트에 센티넬 부재 — 열람이 저장을 만들지 않음
+- [x] content 응답에 `Cache-Control: no-store` 와 256KB 상한이 적용됨 (바이트 기준 절단, UTF-8 안 깨짐)
+- [x] 가림 프로젝트에서 content 가 `reason: 'redacted'` 로 거부되고 버튼 비활성
+- [x] 원본이 없으면 `available: false, reason: source_missing` — 지어내지 않음
+- [x] 최근 프로젝트가 최근 작업 순 최대 5개, 가림 규칙 적용
+- [x] Codex/Gemini/Cursor 는 빈 상세가 아니라 `supported: false` 와 이유
+- [ ] 행의 턴 번호 클릭 시 세션 흐름 화면의 해당 턴이 열림 (focus 인자) — **미구현**,
+      지금은 턴 번호를 표시만 합니다
+
+## 구현하면서 바뀐 것
+
+설계와 다르게 간 곳만 적습니다. 나머지는 문서대로입니다.
+
+| 설계 | 실제 | 이유 |
+|---|---|---|
+| 파서 v3 로 올림 | **버전 그대로(2)** | `toolCalls` 를 원장에 저장하지 않으므로 재해석이 필요 없습니다. 올렸다면 기존 로그 전량을 다시 읽어야 했습니다 |
+| `getRecentProjects` 새로 만들기 | 기존 `getRecentProjectsAcrossProviders` 재사용 | 최근 활동 순 + 가림 적용이 이미 같은 규칙입니다 |
+| 세션 목록 새 쿼리 | 기존 `getProjectSessions` 에 `provider`·`requestCount` 추가 | 세션 API 는 provider 없이는 어느 어댑터로 읽을지 모릅니다 |
+| 요청 행 표에 품질 없음 | 품질 열 추가 | 이벤트마다 `measurementQuality` 가 이미 있고, 숫자를 믿을 수 있는지가 이 화면에서 바로 필요합니다 |
+| [보기] 버튼 글자 = "보기" | **도구 이름** | 한 행에 호출이 여럿이면 버튼도 여럿이라 전부 "보기" 면 어느 호출인지 알 수 없습니다 |
 
 ## 하지 않는 것
 

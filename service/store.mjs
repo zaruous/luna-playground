@@ -1212,13 +1212,21 @@ export class UsageStore {
       GROUP BY session_id
       ORDER BY last_activity DESC
       LIMIT ?
-    `).all(...args, nameArg, limit).map((row) => ({
-      sessionId: row.session_id,
-      model: row.model,
-      lastActivity: row.last_activity,
-      tokens: this.#tokensFrom(row),
-      totalTokens: Number(row.total_tokens) || 0,
-    }));
+    `).all(...args, nameArg, limit).map((row) => {
+      const tokens = this.#tokensFrom(row);
+      return {
+        // provider 를 함께 싣습니다 — 세션 API 는 provider 없이는 어느 어댑터로
+        // 읽을지 모르고, 화면이 프로젝트 목록에서 세션으로 내려갈 때 그 값을
+        // 다시 찾을 곳이 없습니다.
+        provider: target.provider,
+        sessionId: row.session_id,
+        model: row.model,
+        lastActivity: row.last_activity,
+        tokens,
+        totalTokens: Number(row.total_tokens) || 0,
+        requestCount: tokens.eventCount,
+      };
+    });
   }
 
   // 한도 이력은 percent 시계열입니다. 토큰과 같은 축에 두지 않습니다(R5).
@@ -1619,6 +1627,62 @@ export class UsageStore {
         promptTokens: promptSideTokens(providerId, tokens),
         totalTokens: promptSideTokens(providerId, tokens) + tokens.outputTokens,
         requestCount: tokens.eventCount,
+        firstAt: summary.first_at,
+        lastAt: summary.last_at,
+        model: summary.model,
+      },
+    };
+  }
+
+  // 상세 내역 화면(docs/dev/menus/detail.md)이 읽을 **세션 전체**의 원본 포인터.
+  //
+  // getTurnSource 와 같은 일을 턴 필터 없이 합니다. 둘을 하나로 합치지 않은
+  // 이유는 턴 상세가 "이 턴에 기여한 파일" 만 읽어야 하기 때문입니다 — 세션
+  // 전체를 읽으면 턴 하나를 펼칠 때마다 서브에이전트 파일까지 다 훑습니다.
+  getSessionSource({ provider, sessionId } = {}) {
+    const providerId = normalizeProviderId(provider);
+    if (!sessionId) return null;
+
+    const summary = this.db.prepare(`
+      SELECT COALESCE(NULLIF(project_name, ''), 'unknown-project') AS project_name,
+             MAX(cwd) AS cwd, MAX(model) AS model,
+             ${this.#tokenSums()},
+             COUNT(DISTINCT CASE WHEN turn_index > 0 THEN turn_index END) AS turn_count,
+             MIN(COALESCE(event_timestamp, observed_at)) AS first_at,
+             MAX(COALESCE(event_timestamp, observed_at)) AS last_at
+      FROM usage_events
+      WHERE provider = ? AND session_id = ?
+    `).get(providerId, sessionId);
+    if (!summary || !Number(summary.event_count)) return null;
+
+    // 정렬을 경로 순으로 고정하는 이유는 턴 상세와 같습니다 — 스캔 순서에 따라
+    // 'main' 라벨이 다른 파일에 붙으면 화면이 요청마다 달라집니다.
+    const sourcePaths = this.db.prepare(`
+      SELECT source_path, COUNT(*) AS event_count
+      FROM usage_events
+      WHERE provider = ? AND session_id = ? AND source_path IS NOT NULL
+      GROUP BY source_path
+      ORDER BY event_count DESC, source_path ASC
+    `).all(providerId, sessionId).map((row) => String(row.source_path));
+
+    const tokens = this.#tokensFrom(summary);
+    const project = this.#applyProjectPrivacy(
+      { provider: providerId, name: summary.project_name, cwd: summary.cwd },
+      this.#aliasIndex(),
+    );
+    return {
+      provider: providerId,
+      sessionId,
+      projectKey: project.projectKey,
+      projectName: project.name,
+      redacted: project.redacted ?? false,
+      sourcePaths,
+      ledger: {
+        tokens,
+        promptTokens: promptSideTokens(providerId, tokens),
+        totalTokens: promptSideTokens(providerId, tokens) + tokens.outputTokens,
+        requestCount: tokens.eventCount,
+        turnCount: Number(summary.turn_count) || 0,
         firstAt: summary.first_at,
         lastAt: summary.last_at,
         model: summary.model,

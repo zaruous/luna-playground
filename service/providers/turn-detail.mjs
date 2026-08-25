@@ -79,6 +79,14 @@ function addFile(files, suffix, count, toolName) {
   entry.tools[name] = (entry.tools[name] ?? 0) + count;
 }
 
+// 턴 필터. `turnIndex: null` 은 "세션 전체" 입니다 — 상세 내역 화면
+// (docs/dev/menus/detail.md)이 같은 배분 규칙으로 세션 전체를 모을 때 씁니다.
+// 0 은 "경계 미확인 버킷"이라는 **실제 턴 번호**이므로 null 과 구분해야 합니다.
+function matchesTurn(turnIndex, eventTurn) {
+  if (turnIndex == null) return true;
+  return (eventTurn ?? 0) === turnIndex;
+}
+
 export function createTurnDetailBuilder({
   provider,
   turnIndex,
@@ -116,12 +124,13 @@ export function createTurnDetailBuilder({
   return {
     // provider 파서가 내보낸 turn 이벤트. 경계 시각과 컴팩션 표시만 씁니다.
     addTurn(event, origin) {
-      if (event.turnIndex !== turnIndex) return;
+      if (!matchesTurn(turnIndex, event.turnIndex)) return;
       if (records.length < recordLimit) {
         records.push({
           seq: recordCount,
           kind: 'turn-start',
           at: event.startedAt ?? null,
+          turnIndex: event.turnIndex ?? 0,
           file: origin.label,
           line: origin.line,
           compacted: Boolean(event.compacted),
@@ -131,7 +140,7 @@ export function createTurnDetailBuilder({
     },
 
     addUsage(event, origin) {
-      if ((event.turnIndex ?? 0) !== turnIndex) return;
+      if (!matchesTurn(turnIndex, event.turnIndex)) return;
       // 재개 복사본은 같은 요청을 다른 파일에 다시 씁니다. 원장이 eventKey 로
       // 접는 것과 같은 기준으로 여기서도 접습니다 — 안 그러면 상세 합계만
       // 부풀어 "표는 4M 인데 상세는 8M" 이 됩니다.
@@ -201,6 +210,7 @@ export function createTurnDetailBuilder({
           seq: recordCount,
           kind: 'request',
           at: event.eventTimestamp ?? null,
+          turnIndex: event.turnIndex ?? 0,
           file: origin.label,
           line: origin.line,
           category,
@@ -220,6 +230,10 @@ export function createTurnDetailBuilder({
           },
           tools: Object.fromEntries(toolEntries),
           paths: { ...(event.touchedPaths ?? {}) },
+          // 도구 호출 손잡이(id + 이름). 본문이 아니라 "어느 호출인가" 를
+          // 가리키는 값이고, 이것이 있어야 상세 내역 화면이 [내용 보기]로
+          // 그 호출 하나만 따로 읽을 수 있습니다.
+          toolCalls: (event.toolCalls ?? []).map((call) => ({ id: call.id, tool: call.tool })),
         });
       }
       recordCount += 1;

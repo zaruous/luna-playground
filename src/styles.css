@@ -209,3 +209,32 @@ rect.chart-seg-undecomposed{stroke:color-mix(in srgb,var(--muted) 35%,transparen
 .project-search{display:flex;align-items:center;gap:8px}
 .project-search .search-input{min-width:0}
 .project-search .chip-button{flex:none}
+
+/* 상세 내역 화면 (docs/dev/menus/detail.md) */
+.chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip-row .chip-button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;border-radius:14px;text-align:left}
+.chip-row .chip-button small{font-weight:600;font-size:8.5px;opacity:.8}
+.panel-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.quality-cell{font-size:9px;color:var(--muted)}
+.record-content-cell{display:flex;gap:4px;flex-wrap:wrap}
+.record-content-cell em{color:var(--muted);font-style:normal}
+
+.tool-breakdown{margin-top:12px}
+.tool-breakdown-bar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--soft)}
+.tool-breakdown-bar i{display:block;height:100%}
+.tool-breakdown-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.tool-breakdown-item{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--soft);min-width:110px}
+.tool-breakdown-item strong{font-size:10px}
+.tool-breakdown-item b{font-size:13px;color:var(--accent2)}
+.tool-breakdown-item small{font-size:8.5px;color:var(--muted)}
+
+/* 내용 보기 팝업 — 본문이 보이는 유일한 자리 */
+.tool-content-backdrop{position:fixed;inset:0;background:#302b2866;display:flex;align-items:center;justify-content:center;padding:24px;z-index:40}
+.tool-content-modal{background:var(--card);border:1px solid var(--accent);border-radius:20px;box-shadow:0 18px 40px #0000002e;padding:20px 22px;width:min(880px,100%);max-height:86vh;overflow:auto}
+.tool-content-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.tool-content-head h3{margin:0;font-size:16px}
+.tool-content-warning{margin:12px 0 0;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,var(--warm) 12%,var(--card));color:var(--warm);font-size:9.5px;font-weight:700}
+.tool-content-block{margin-top:16px}
+.tool-content-block h4{margin:0 0 6px;font-size:11px;display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.tool-content-block h4 small{font-weight:600;color:var(--muted);font-size:9px}
+.tool-content-body{margin:0;padding:12px 14px;background:var(--soft);border:1px solid var(--line);border-radius:12px;font-size:10px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:34vh;overflow:auto}

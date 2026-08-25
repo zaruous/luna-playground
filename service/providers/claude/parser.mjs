@@ -136,18 +136,30 @@ function isHumanPrompt(record) {
 //
 // 경로는 마지막 단과 그 부모 디렉터리만 남깁니다 — "이 파일을 58번 고쳤다"는
 // 인사이트는 지키면서, 전체 절대 경로를 요청마다 저장하지 않기 위해서입니다.
+// 호출 **id** 도 함께 모읍니다(`toolCalls`). id 는 `toolu_01D7…` 같은 불투명한
+// 손잡이라 도구 이름·requestId 와 같은 급의 구조 메타데이터이고, 이것이 있어야
+// 상세 내역 화면의 [내용 보기]가 "어느 호출의 본문인지" 를 가리킬 수 있습니다
+// (docs/dev/menus/detail.md). 본문은 여전히 읽지 않습니다 — 여기서 나가는 것은
+// 이름과 id 뿐이고, 본문은 사람이 버튼을 눌렀을 때 tool-content 리더가 그
+// 호출 하나만 따로 읽습니다.
+//
+// 원장에는 저장하지 않습니다. 상세 내역은 원본을 그 자리에서 다시 읽는
+// 화면이라 id 를 들고 있을 필요가 없고, 저장하면 파서 버전을 올려 전량
+// 재해석해야 합니다.
 export function toolActivity(record) {
   const toolCounts = {};
   const touchedPaths = {};
+  const toolCalls = [];
   for (const block of record.message?.content ?? []) {
     if (block?.type !== 'tool_use' || !block.name) continue;
     toolCounts[block.name] = (toolCounts[block.name] ?? 0) + 1;
+    if (block.id) toolCalls.push({ id: String(block.id), tool: block.name });
     const target = block.input?.file_path ?? block.input?.path ?? block.input?.notebook_path;
     if (typeof target !== 'string' || !target) continue;
     const suffix = target.split(/[\\/]+/).filter(Boolean).slice(-2).join('/');
     if (suffix) touchedPaths[suffix] = (touchedPaths[suffix] ?? 0) + 1;
   }
-  return { toolCounts, touchedPaths };
+  return { toolCounts, touchedPaths, toolCalls };
 }
 
 // 필드별 신뢰도(R2). "없는 값은 0이 아니라 미확인"이므로(R7) 로그가 주지 않은
@@ -364,7 +376,7 @@ export function parseClaudeTranscriptLine(line, state) {
   });
 
   const eventKey = claudeEventKey(record);
-  const { toolCounts, touchedPaths } = toolActivity(record);
+  const { toolCounts, touchedPaths, toolCalls } = toolActivity(record);
 
   return [{
     type: 'usage',
@@ -401,6 +413,9 @@ export function parseClaudeTranscriptLine(line, state) {
     turnIndex: state.subagentFile ? 0 : state.turn.index,
     toolCounts,
     touchedPaths,
+    // 도구 호출 손잡이(id + 이름). 원장에 저장되지 않고, 원본을 다시 읽는
+    // 화면에서만 씁니다 — toolActivity 머리말 참고.
+    toolCalls,
     discrepancies: {
       ...(iterationIssue ?? {}),
       ...(cacheWriteIssue ? {
