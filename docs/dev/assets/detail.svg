@@ -140,5 +140,22 @@
   <line x1="186" y1="466" x2="864" y2="466" stroke="#ddd4c8" stroke-width="1" />
   <text x="186" y="484" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">9행 / 전체 9행 · 원본 재독(저장 안 함) · 원본 없으면 "원본 없음"으로 표기</text>
   <text x="186" y="500" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">정렬: 시각(기본) · 신규 프롬프트 · 결과 크기 · 출력 — 세션 흐름 표와 같은 table-sort 규칙</text>
-  <text x="186" y="516" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">[보기] = 그 호출 하나의 input·결과 본문을 원본에서 읽어 표시 — 저장 없음, 가림 프로젝트는 비활성, 자격증명 경고 상시 표기</text>
+  <text x="186" y="516" font-size="8" fill="#8a8078" font-weight="normal" text-anchor="start">[보기] 클릭 시에만 그 호출 하나의 본문을 원본에서 읽어 팝업으로 표시 — 목록 응답에 본문 없음, 저장 없음, 가림 프로젝트는 비활성</text>
+
+  <!-- 내용 보기 팝업(모달) — [보기] 클릭 시에만 열림 -->
+  <rect x="466" y="296" width="398" height="186" rx="12" fill="#302b28" opacity="0.08" />
+  <rect x="460" y="290" width="398" height="186" rx="12" fill="#fffdf9" stroke="#8a6f3d" stroke-width="1.2" />
+  <text x="474" y="312" font-size="10.5" fill="#302b28" font-weight="bold" text-anchor="start">도구 호출 내용 — Read · 23:17:05 · 턴 1</text>
+  <text x="846" y="312" font-size="11" fill="#8a8078" font-weight="bold" text-anchor="middle">✕</text>
+  <rect x="474" y="320" width="370" height="16" rx="8" fill="#f3e3dc" />
+  <text x="482" y="331" font-size="7.5" fill="#a05a4a" font-weight="normal" text-anchor="start">⚠ 도구 출력에는 자격증명이 남아 있을 수 있습니다 — 이 내용은 저장되지 않습니다</text>
+  <text x="474" y="352" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">input (129자)</text>
+  <rect x="474" y="358" width="370" height="10" rx="5" fill="#f4eee5" />
+  <rect x="474" y="371" width="252" height="10" rx="5" fill="#f4eee5" />
+  <text x="474" y="396" font-size="8.5" fill="#8a8078" font-weight="bold" text-anchor="start">결과 (17,598자)</text>
+  <rect x="474" y="402" width="370" height="10" rx="5" fill="#f4eee5" />
+  <rect x="474" y="415" width="370" height="10" rx="5" fill="#f4eee5" />
+  <rect x="474" y="428" width="370" height="10" rx="5" fill="#f4eee5" />
+  <rect x="474" y="441" width="318" height="10" rx="5" fill="#f4eee5" />
+  <text x="474" y="468" font-size="7.5" fill="#8a8078" font-weight="normal" text-anchor="start">원본: 253e87aa….jsonl:41 — 클릭 시에만 읽고, 닫으면 버립니다</text>
 </svg>
