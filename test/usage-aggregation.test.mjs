@@ -191,6 +191,55 @@ test('마지막 활동이 동률이면 토큰이 아니라 그룹 키 순으로 
   }
 });
 
+// Cursor 는 usage_events 에 행이 없습니다(docs/dev/cursor/decisions.md 결정 4) —
+// cursor_local_activity 로만 들어옵니다. getRecentProjectsAcrossProviders 는 이
+// 테이블을 UNION 으로 더해 같은 프로젝트 목록에 섞습니다.
+function cursorEvent({
+  composerId = 'composer-1', surface = 'cli', cwd = '/repo/cursor-proj', projectName = 'cursor-proj',
+  lastUpdatedAt = '2026-08-20T10:00:00.000Z',
+} = {}) {
+  return {
+    composerId, surface, workspaceId: null, cwd, projectName,
+    createdAt: lastUpdatedAt, lastUpdatedAt,
+    requestCount: 3, linesAdded: null, linesRemoved: null,
+    contextUsagePercent: null, contextTotalTokens: 5000, contextWindowTokens: 200000,
+    contextBreakdown: { conversation: 5000 }, parserVersion: 1,
+  };
+}
+
+test('최근 프로젝트 목록에는 Cursor 도 마지막 활동 기준으로 섞인다', () => {
+  const { root, store } = makeStore();
+  try {
+    insert(store, { offset: 0, timestamp: '2026-08-01T03:00:00.000Z', cwd: '/repo/old-codex', projectName: 'old-codex' });
+    store.upsertCursorActivity(cursorEvent({ lastUpdatedAt: '2026-08-20T10:00:00.000Z' }));
+
+    const projects = store.getRecentProjectsAcrossProviders(6);
+    assert.equal(projects[0].provider, 'cursor');
+    assert.equal(projects[0].name, 'cursor-proj');
+    assert.equal(projects[0].cwd, '/repo/cursor-proj');
+    // 있지도 않은 요청 델타를 지어내면 R7 위반입니다 — 0으로 고정합니다.
+    assert.equal(projects[0].totalTokens, 0);
+    assert.equal(projects[1].provider, 'codex');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('since 필터는 Cursor 활동에도 last_updated_at 기준으로 적용된다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({ composerId: 'composer-old', lastUpdatedAt: '2026-07-01T00:00:00.000Z', projectName: 'cursor-old' }));
+    store.upsertCursorActivity(cursorEvent({ composerId: 'composer-new', lastUpdatedAt: '2026-08-20T00:00:00.000Z', projectName: 'cursor-new' }));
+
+    const recent = store.getRecentProjectsAcrossProviders(6, '2026-08-01T00:00:00.000Z');
+    assert.deepEqual(recent.map((project) => project.name), ['cursor-new']);
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('한도 이력은 percent만 담고 토큰을 섞지 않는다', () => {
   const { root, store } = makeStore();
   try {

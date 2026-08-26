@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { isoNow, projectKeyOf, projectNameFromCwd, worstQuality } from './utils.mjs';
 import { dominantPhase, splitTokensByPhase } from './providers/tool-phases.mjs';
@@ -187,6 +188,33 @@ export class UsageStore {
         updated_at TEXT NOT NULL,
         PRIMARY KEY (provider, project_key)
       );
+
+      -- Cursor 전용. 요청 단위 입력/출력 델타가 아니라 "그 시점 컨텍스트 창
+      -- 구성 스냅샷"이라 usage_events 와 모양이 다릅니다 — 그래서 절대 거기
+      -- 안 섞고 이 테이블에만 씁니다(docs/dev/cursor/decisions.md 결정 4).
+      -- 0 토큰으로 usage_events 에 넣으면 "미확인"과 "0"이 같은 값이 되어
+      -- R7 을 어기고, NULL 로 넣으면 기존 SUM(...)/ORDER BY total_tokens DESC
+      -- 가 Cursor 를 항상 예외로 다뤄야 합니다.
+      CREATE TABLE IF NOT EXISTS cursor_local_activity (
+        composer_id TEXT PRIMARY KEY,
+        surface TEXT NOT NULL,
+        workspace_id TEXT,
+        cwd TEXT,
+        project_name TEXT,
+        created_at TEXT NOT NULL,
+        last_updated_at TEXT NOT NULL,
+        request_count INTEGER NOT NULL DEFAULT 0,
+        lines_added INTEGER,
+        lines_removed INTEGER,
+        context_usage_percent REAL,
+        context_total_tokens INTEGER,
+        context_window_tokens INTEGER,
+        context_breakdown TEXT,
+        parser_version INTEGER NOT NULL,
+        content_hash TEXT,
+        observed_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_cursor_activity_updated ON cursor_local_activity(last_updated_at);
 
       CREATE INDEX IF NOT EXISTS idx_usage_events_provider_time ON usage_events(provider, observed_at);
       CREATE INDEX IF NOT EXISTS idx_usage_events_project ON usage_events(provider, project_name, observed_at);
@@ -947,21 +975,47 @@ export class UsageStore {
   }
 
   // 정렬 규칙은 위 getRecentProjects 와 같습니다 — 동률은 그룹 키 순입니다.
+  //
+  // Cursor 는 usage_events 에 행이 없습니다(결정 4 — 위 migrate() 주석).
+  // 그래서 cursor_local_activity 를 UNION ALL 로 더해 같은 모양(provider,
+  // project_name, cwd, 토큰류, last_activity, model)으로 맞춘 뒤 바깥에서
+  // 다시 묶습니다. 토큰류 세 컬럼은 0 으로 고정합니다 — 있지도 않은 요청
+  // 델타를 지어내면 R7 위반이고, 이 목록은 애초에 "마지막 활동 순"이라 토큰
+  // 수가 정렬에 쓰이지도 않습니다(project_name 표시에도 0 은 자연히
+  // formatTokens 가 "0"으로만 찍어 실제 있는 것처럼 보이지 않습니다).
   getRecentProjectsAcrossProviders(limit = 6, since = null) {
-    const timeClause = since ? 'WHERE COALESCE(event_timestamp, observed_at) >= ?' : '';
-    const args = since ? [since, limit] : [limit];
+    const usageTimeClause = since ? 'WHERE COALESCE(event_timestamp, observed_at) >= ?' : '';
+    const cursorTimeClause = since ? 'WHERE last_updated_at >= ?' : '';
+    const args = since ? [since, since, limit] : [limit];
     const rows = this.db.prepare(`
       SELECT
         provider,
-        COALESCE(NULLIF(project_name,''), 'unknown-project') AS project_name,
+        project_name,
         MAX(cwd) AS cwd,
         COALESCE(SUM(total_tokens),0) AS total_tokens,
         COALESCE(SUM(input_tokens),0) AS input_tokens,
         COALESCE(SUM(cached_input_tokens),0) AS cached_input_tokens,
-        MAX(COALESCE(event_timestamp, observed_at)) AS last_activity,
+        MAX(last_activity) AS last_activity,
         MAX(model) AS model
-      FROM usage_events
-      ${timeClause}
+      FROM (
+        SELECT
+          provider,
+          COALESCE(NULLIF(project_name,''), 'unknown-project') AS project_name,
+          cwd, total_tokens, input_tokens, cached_input_tokens,
+          COALESCE(event_timestamp, observed_at) AS last_activity,
+          model
+        FROM usage_events
+        ${usageTimeClause}
+        UNION ALL
+        SELECT
+          'cursor' AS provider,
+          COALESCE(NULLIF(project_name,''), 'unknown-project') AS project_name,
+          cwd, 0 AS total_tokens, 0 AS input_tokens, 0 AS cached_input_tokens,
+          last_updated_at AS last_activity,
+          NULL AS model
+        FROM cursor_local_activity
+        ${cursorTimeClause}
+      )
       GROUP BY provider, project_name
       ORDER BY last_activity DESC, provider ASC, project_name ASC
       LIMIT ?
@@ -977,6 +1031,98 @@ export class UsageStore {
       cachedInputTokens: Number(row.cached_input_tokens) || 0,
       lastActivity: row.last_activity,
     }, aliases));
+  }
+
+  // Cursor 전용 upsert. usage_events 를 쓰는 upsertUsageEvent/insertUsageEvent
+  // 와 이 메서드는 절대 같은 테이블을 건드리지 않습니다(결정 4). "최신 관측값
+  // 승리" — composer_id PK 로 덮어씁니다. 토큰류 컬럼은 새 이벤트에 값이
+  // 없으면(예: IDE 행이 CLI 행 뒤에 와서) 기존 값을 지우지 않도록 COALESCE 로
+  // 지킵니다 — 안 그러면 CLI 가 채운 절대 토큰을 IDE 관측이 조용히 지웁니다.
+  // 반환값은 "내용이 실제로 바뀌었는가"이고, content_hash 비교로 판정합니다.
+  upsertCursorActivity(event, observedAt = isoNow()) {
+    const contentHash = crypto.createHash('sha256').update(JSON.stringify({
+      surface: event.surface, cwd: event.cwd, projectName: event.projectName,
+      lastUpdatedAt: event.lastUpdatedAt, requestCount: event.requestCount,
+      linesAdded: event.linesAdded, linesRemoved: event.linesRemoved,
+      contextUsagePercent: event.contextUsagePercent, contextTotalTokens: event.contextTotalTokens,
+      contextWindowTokens: event.contextWindowTokens, contextBreakdown: event.contextBreakdown,
+    })).digest('hex');
+    const before = this.db.prepare('SELECT content_hash FROM cursor_local_activity WHERE composer_id = ?').get(event.composerId);
+
+    this.db.prepare(`
+      INSERT INTO cursor_local_activity (
+        composer_id, surface, workspace_id, cwd, project_name, created_at, last_updated_at,
+        request_count, lines_added, lines_removed, context_usage_percent,
+        context_total_tokens, context_window_tokens, context_breakdown,
+        parser_version, content_hash, observed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(composer_id) DO UPDATE SET
+        surface = excluded.surface,
+        workspace_id = COALESCE(excluded.workspace_id, cursor_local_activity.workspace_id),
+        cwd = COALESCE(excluded.cwd, cursor_local_activity.cwd),
+        project_name = COALESCE(excluded.project_name, cursor_local_activity.project_name),
+        last_updated_at = excluded.last_updated_at,
+        request_count = excluded.request_count,
+        lines_added = COALESCE(excluded.lines_added, cursor_local_activity.lines_added),
+        lines_removed = COALESCE(excluded.lines_removed, cursor_local_activity.lines_removed),
+        context_usage_percent = COALESCE(excluded.context_usage_percent, cursor_local_activity.context_usage_percent),
+        context_total_tokens = COALESCE(excluded.context_total_tokens, cursor_local_activity.context_total_tokens),
+        context_window_tokens = COALESCE(excluded.context_window_tokens, cursor_local_activity.context_window_tokens),
+        context_breakdown = COALESCE(excluded.context_breakdown, cursor_local_activity.context_breakdown),
+        parser_version = excluded.parser_version,
+        content_hash = excluded.content_hash,
+        observed_at = excluded.observed_at
+    `).run(
+      event.composerId, event.surface, event.workspaceId ?? null, event.cwd ?? null, event.projectName ?? null,
+      event.createdAt, event.lastUpdatedAt, event.requestCount ?? 0, event.linesAdded ?? null, event.linesRemoved ?? null,
+      event.contextUsagePercent ?? null, event.contextTotalTokens ?? null, event.contextWindowTokens ?? null,
+      event.contextBreakdown ? JSON.stringify(event.contextBreakdown) : null,
+      event.parserVersion, contentHash, observedAt,
+    );
+    return !before || before.content_hash !== contentHash;
+  }
+
+  // 대시보드 카드 전용 — "마지막 관측 컨텍스트 총 토큰/창 크기"
+  // (docs/dev/cursor/README.md 예시: "27,766 / 200,000"). 절대 토큰은 CLI
+  // 표면에만 있습니다(IDE 는 blob 을 composerId 에 귀속시킬 근거가 없어 항상
+  // NULL — service/providers/cursor/parser.mjs 주석). CLI 관측이 하나도
+  // 없으면 IDE 의 contextUsagePercent(백분율)로 대체합니다 — 가짜로 환산한
+  // 절대값이 아니라 실제로 다른 종류의 숫자라는 걸 absoluteUnavailable 로
+  // 구분합니다(R7).
+  getCursorContextSummary() {
+    const cli = this.db.prepare(`
+      SELECT composer_id, context_total_tokens, context_window_tokens, last_updated_at
+      FROM cursor_local_activity
+      WHERE surface = 'cli' AND context_total_tokens IS NOT NULL
+      ORDER BY last_updated_at DESC LIMIT 1
+    `).get();
+    if (cli) {
+      return {
+        composerId: cli.composer_id,
+        totalTokens: Number(cli.context_total_tokens) || 0,
+        windowTokens: cli.context_window_tokens == null ? null : Number(cli.context_window_tokens),
+        contextUsagePercent: null,
+        observedAt: cli.last_updated_at,
+        absoluteUnavailable: false,
+      };
+    }
+    const ide = this.db.prepare(`
+      SELECT composer_id, context_usage_percent, last_updated_at
+      FROM cursor_local_activity
+      WHERE surface = 'ide' AND context_usage_percent IS NOT NULL
+      ORDER BY last_updated_at DESC LIMIT 1
+    `).get();
+    if (ide) {
+      return {
+        composerId: ide.composer_id,
+        totalTokens: null,
+        windowTokens: null,
+        contextUsagePercent: Number(ide.context_usage_percent) || 0,
+        observedAt: ide.last_updated_at,
+        absoluteUnavailable: true,
+      };
+    }
+    return null;
   }
 
   getRecentReconciliation(provider = 'codex', limit = 12) {
@@ -1740,7 +1886,7 @@ export class UsageStore {
       // 커서를 먼저 지웁니다. 중간에 실패해도 "원장은 비었는데 커서는 다
       // 읽었다고 말하는" 상태로 남지 않게 하려면 같은 트랜잭션이어야 합니다.
       for (const table of ['provider_scan_state', 'scan_state', 'usage_events', 'turns',
-        'server_usage_snapshots', 'reconciliation_events', 'sessions']) {
+        'server_usage_snapshots', 'reconciliation_events', 'sessions', 'cursor_local_activity']) {
         this.db.exec(`DELETE FROM ${table}`);
       }
       if (!keepAliases) this.db.exec('DELETE FROM project_aliases');
@@ -1754,6 +1900,7 @@ export class UsageStore {
     const rateSnapshots = Number(this.db.prepare('SELECT COUNT(*) AS count FROM server_usage_snapshots').get().count) || 0;
     const scanFiles = Number(this.db.prepare('SELECT COUNT(*) AS count FROM provider_scan_state').get().count) || 0;
     const parseResets = Number(this.db.prepare('SELECT COUNT(*) AS count FROM usage_events WHERE cumulative_reset = 1').get().count) || 0;
-    return { dbPath: this.dbPath, sessions, usageEvents, rateSnapshots, scanFiles, cumulativeResets: parseResets };
+    const cursorActivity = Number(this.db.prepare('SELECT COUNT(*) AS count FROM cursor_local_activity').get().count) || 0;
+    return { dbPath: this.dbPath, sessions, usageEvents, rateSnapshots, scanFiles, cumulativeResets: parseResets, cursorActivity };
   }
 }

@@ -528,16 +528,27 @@ export function providerUnavailable(provider) {
 
 // 수집기가 실제로 무엇을 보고 있는지 한 줄로. 동기화 화면은 수집 신뢰성을
 // 담당하는데, 원본이 어디로 옮겨갔는지를 말하지 않으면 그 역할을 못 합니다.
+//
+// sources 의 필드 이름은 provider 마다 다릅니다(Gemini: legacyChats/antigravity,
+// Cursor: cli/ide) — provider 를 안 가리고 Gemini 필드만 보면, Cursor 처럼 실제로
+// 원본을 찾았는데도 항상 "읽을 수 있는 원본을 찾지 못했습니다"로 잘못 떨어집니다.
 export function collectorSourceLine(provider) {
   const sources = provider?.collector?.sources;
   if (!sources) return null;
   const parts = [];
-  const legacy = sources.legacyChats;
-  const agy = sources.antigravity;
-  if (legacy?.present) parts.push(`Gemini CLI 세션 ${legacy.files ?? 0}개`);
-  if (agy?.present) {
-    const when = agy.lastActivityAt ? ` · 마지막 활동 ${new Date(agy.lastActivityAt).toLocaleDateString('ko-KR')}` : '';
-    parts.push(`agy 대화 ${agy.conversations ?? 0}개${when}`);
+  if (provider?.id === 'cursor') {
+    const cli = sources.cli;
+    const ide = sources.ide;
+    if (cli?.present) parts.push(`Cursor CLI 대화 ${cli.chats ?? 0}개`);
+    if (ide?.present) parts.push(`Cursor IDE 컴포저 ${ide.composers ?? 0}개`);
+  } else {
+    const legacy = sources.legacyChats;
+    const agy = sources.antigravity;
+    if (legacy?.present) parts.push(`Gemini CLI 세션 ${legacy.files ?? 0}개`);
+    if (agy?.present) {
+      const when = agy.lastActivityAt ? ` · 마지막 활동 ${new Date(agy.lastActivityAt).toLocaleDateString('ko-KR')}` : '';
+      parts.push(`agy 대화 ${agy.conversations ?? 0}개${when}`);
+    }
   }
   if (!parts.length) return '읽을 수 있는 원본을 찾지 못했습니다.';
   return parts.join(' · ');
@@ -559,6 +570,63 @@ export function geminiProviderActivityLabel(provider, options) {
   const state = geminiSourceState(provider);
   if (state && state.kind !== 'legacy-observed') return state.label;
   return providerActivityLabel(options);
+}
+
+// Cursor 는 요청 단위 입력/출력 델타가 아니라 "그 시점 컨텍스트 창 구성
+// 스냅샷"만 있습니다(docs/dev/cursor/decisions.md 결정 1). CLI/IDE 표면을
+// 따로 감지하고(collector.sources), 절대 토큰(CLI)과 백분율(IDE)은 서로 다른
+// 종류의 숫자라 kind 로 갈라 보여줍니다 — geminiSourceState 와 같은 패턴,
+// 결정 5 의 문구를 그대로 씁니다.
+export function cursorSourceState(provider) {
+  if (!provider || provider.id !== 'cursor') return null;
+  const sources = provider.collector?.sources ?? {};
+  const cli = sources.cli ?? { present: false, chats: 0 };
+  const ide = sources.ide ?? { present: false, composers: 0 };
+  if (!cli.present && !ide.present) {
+    return {
+      kind: 'not-installed',
+      label: '미설치',
+      detail: 'Cursor CLI(~/.cursor) · IDE(Composer) 로그를 찾지 못했습니다.',
+    };
+  }
+  if (!provider.cursorContext) {
+    return {
+      kind: 'detected-empty',
+      label: '감지됨 · 관측된 활동 없음',
+      detail: 'Cursor 로그는 찾았지만 아직 컴포저/대화 활동이 관측되지 않았습니다.',
+    };
+  }
+  if (!provider.cursorContext.absoluteUnavailable) {
+    return {
+      kind: 'context-snapshot-only',
+      label: '로컬 감지 · 컨텍스트 구성만(요청 단위 아님)',
+      detail: 'Cursor 로컬 저장소는 시점별 컨텍스트 구성(시스템 프롬프트/도구/규칙/대화 등 카테고리별 토큰)은 주지만, '
+        + '요청 단위 입력/출력 델타는 주지 않습니다. 서버 사용량(Admin API)은 이 화면에서 다루지 않습니다.',
+    };
+  }
+  return {
+    kind: 'context-percent-only',
+    label: '로컬 감지 · 컨텍스트 백분율만(절대 토큰 없음)',
+    detail: 'IDE(Composer)에서 컨텍스트 사용률만 확인됩니다 — CLI 대화가 없어 절대 토큰 수는 계산하지 않습니다 '
+      + '(다른 프로젝트 수치를 잘못 붙이지 않기 위해서입니다).',
+  };
+}
+
+// provider.cursorContext(engine.mjs snapshot()) → "27,766 / 200,000" 같은
+// 표시 문자열. CLI 절대 토큰을 우선하고, 없으면 IDE 의 컨텍스트 백분율로
+// 대체합니다 — 절대값이 없다고 가짜로 환산하지 않습니다(R7).
+export function cursorContextText(cursorContext) {
+  if (!cursorContext) return null;
+  if (!cursorContext.absoluteUnavailable && Number.isFinite(cursorContext.totalTokens)) {
+    const windowText = Number.isFinite(cursorContext.windowTokens)
+      ? cursorContext.windowTokens.toLocaleString('ko-KR')
+      : '?';
+    return `${cursorContext.totalTokens.toLocaleString('ko-KR')} / ${windowText}`;
+  }
+  if (Number.isFinite(cursorContext.contextUsagePercent)) {
+    return `컨텍스트 ${formatPercent(cursorContext.contextUsagePercent, 1)} 사용`;
+  }
+  return null;
 }
 
 export function connectionState({ error = null } = {}) {

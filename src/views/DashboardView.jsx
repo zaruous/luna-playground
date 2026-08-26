@@ -12,6 +12,7 @@ import {
   buildProviderTokenSplits, cacheHitPercent, accountingLabels, serverQuotaState, featuredQuotaWindow, providerQuotaWindows,
   decomposeTokens, PENDING_LABEL, percentText, providerActivityLabel, tokensOrDash, tokensText,
   geminiProviderActivityLabel, geminiSourceState, geminiTokensBlocked,
+  cursorSourceState, cursorContextText,
 } from '../shared.js';
 
 // 정렬 기준은 원본 값입니다 — 화면의 '4.60B' 를 사전순으로 세우면 319.6M 이
@@ -300,7 +301,11 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
   // title 을 읽어 준다는 보장이 없어, 76% 와 95% 만 남으면 두 수가 같은 종류로
   // 읽힙니다. 툴팁은 분모까지 보여주는 덤일 뿐입니다.
   const cacheBreakdown = providerRows
-    .filter((item) => (item.periodTokens?.promptTokens ?? 0) > 0)
+    // context_only(Cursor)는 요청 단위 프롬프트/캐시 개념이 없습니다 — promptTokens
+    // 가 항상 0 이라 이 필터를 우연히도 통과하지 못하지만, 의도를 코드로도
+    // 명시해 나중에 계산 방식이 바뀌어도 조용히 깨지지 않게 합니다
+    // (docs/dev/cursor/기능적용가능성.md 의 "얼리 리턴" 결정).
+    .filter((item) => (item.periodTokens?.promptTokens ?? 0) > 0 && item.capabilities?.accounting !== 'context_only')
     .map((item) => ({
       id: item.id,
       name: item.name,
@@ -405,7 +410,16 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
               // 토큰이 있는데 대시보드가 "관측 대기 · —" 라고 말했습니다.
               // 큰 숫자 자리는 이번 달 몫으로 남깁니다 — 이 패널의 막대와 비중이
               // 이번 달 기준이라, 거기에 전체 기간 값을 넣으면 비교가 깨집니다.
-              const label = geminiProviderActivityLabel(item, {
+              const geminiState = item.id === 'gemini' ? geminiSourceState(item) : null;
+              // Cursor 는 요청 델타가 아예 없는 provider 입니다(context_only) —
+              // 이 행의 막대·비중은 다른 provider 와 같은 막대에 안 섞습니다
+              // (dashboard-coverage.svg 10/11번 결정: "AI별 사용량 — provider 바"는
+              // 배제). 다만 숫자 자리에는 마지막 관측 컨텍스트 값을 별도 라벨과
+              // 함께 텍스트로 보여줍니다 — 막대 비교에는 안 쓰고 텍스트로만
+              // 드러내는 절충입니다(docs/dev/cursor/README.md dashboard 절).
+              const cursorState = item.id === 'cursor' ? cursorSourceState(item) : null;
+              const cursorText = item.id === 'cursor' ? cursorContextText(item.cursorContext) : null;
+              const label = cursorState?.label ?? geminiProviderActivityLabel(item, {
                 pending: rowPending,
                 badgeLabel: item.badge?.label ?? null,
                 periodTokens: item.tokens,
@@ -414,9 +428,8 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
                 status: item.status,
                 gradeUnavailable: !monthScoped,
               });
-              const geminiState = item.id === 'gemini' ? geminiSourceState(item) : null;
-              const tokenBlocked = geminiTokensBlocked(item);
-              const tokenText = tokenBlocked ? '—' : tokensOrDash(item.tokens, rowPending);
+              const tokenBlocked = geminiTokensBlocked(item) || item.capabilities?.accounting === 'context_only';
+              const tokenText = rowPending ? PENDING_LABEL : cursorText ?? (tokenBlocked ? '—' : tokensOrDash(item.tokens, rowPending));
               const shareText = rowPending
                 ? PENDING_LABEL
                 : tokenBlocked
@@ -426,7 +439,7 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
                 <div
                   className={`usage-row ${item.tokens === 0 && !tokenBlocked ? 'usage-row--pending' : ''}`}
                   key={item.id}
-                  title={geminiState?.detail ?? undefined}
+                  title={geminiState?.detail ?? cursorState?.detail ?? undefined}
                 >
                   <div className="ai-name"><span className={`ai-mark ${item.tone}`}>{item.short}</span><span>{item.name}<small>{label}</small></span></div>
                   <div className="bar-track"><div className={`bar ${item.tone}`} style={{ width: item.tokens && !tokenBlocked ? `${Math.max(3, (item.tokens / maxTokens) * 100)}%` : '0%' }}/></div>
@@ -474,12 +487,19 @@ export default function DashboardView({ snapshot, hookStatuses, api, actionBusy,
             // 달만 보여준다), 프로젝트 탭으로 넘어가면 전체 기간으로 넓혀서
             // 찾습니다 — 그 규칙은 ProjectView 의 focus 처리 쪽에 있습니다.
             const openProject = () => onNavigate?.('project', { projectKey: project.projectKey });
+            // Cursor 프로젝트는 요청 델타 토큰이 없어 totalTokens 가 항상
+            // 0입니다(가짜로 채우지 않음, R7) — formatTokens(0) 을 그대로 찍으면
+            // "쟀더니 0" 으로 읽혀 "이 모양의 숫자가 아예 없다"는 사실과
+            // 달라집니다. 대시보드 카드의 마지막 관측 컨텍스트로 대신 보여줍니다.
+            const tokenCell = project.provider === 'cursor'
+              ? cursorContextText(provider?.cursorContext) ?? '—'
+              : formatTokens(project.totalTokens);
             return <div
               className="project-row project-row--clickable"
               role="row"
               key={`${project.provider}-${project.name}-${project.cwd ?? index}`}
               onClick={openProject}
-            ><div className="project-name"><span className={`folder ${['green','orange','blue'][index % 3]}`}/><div><strong>{project.name}</strong><small>{project.cwd || project.model || `${provider?.name ?? 'AI'} session`}</small></div></div><div className="project-ai"><span className={`ai-mark ${provider?.tone ?? 'mint'}`}>{provider?.short ?? '?'}</span>{provider?.name ?? project.provider}</div><strong>{formatTokens(project.totalTokens)}</strong><span>{relativeTime(project.lastActivity)}</span></div>;
+            ><div className="project-name"><span className={`folder ${['green','orange','blue'][index % 3]}`}/><div><strong>{project.name}</strong><small>{project.cwd || project.model || `${provider?.name ?? 'AI'} session`}</small></div></div><div className="project-ai"><span className={`ai-mark ${provider?.tone ?? 'mint'}`}>{provider?.short ?? '?'}</span>{provider?.name ?? project.provider}</div><strong>{tokenCell}</strong><span>{relativeTime(project.lastActivity)}</span></div>;
           }) : pending
             ? <div className="empty-projects"><strong>로딩중..</strong><span>로그를 읽는 중이에요. 프로젝트가 확인되는 대로 이 표에 채워집니다.</span></div>
             : <div className="empty-projects"><strong>아직 이번 달 AI 사용 기록이 없어요.</strong><span>연결된 provider 로그가 발견되면 과거 기록부터 자동으로 채웁니다.</span></div>}

@@ -6,6 +6,7 @@ import {
   qualityBadge, qualityFieldSummary, PENDING_LABEL, resolvePeriodBreakdown,
   sumTokenFields, tokenCategories, tokensText,
   geminiSourceState, geminiTokensBlocked, providerUnavailable,
+  cursorSourceState,
 } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
@@ -247,11 +248,19 @@ export default function UsageView({ snapshot, api, pending = false }) {
             {sortedRows.map((provider) => {
               const connected = provider.integration === 'connected';
               const geminiState = provider.id === 'gemini' ? geminiSourceState(provider) : null;
-              const tokenBlocked = geminiTokensBlocked(provider);
+              // Cursor 는 요청 델타가 아예 없는 provider 입니다(context_only) — 이
+              // 표는 provider 마다 카테고리별 토큰을 요청 델타로 전제하므로 그
+              // 전제 자체가 안 맞습니다. geminiTokensBlocked 만 보면 놓칩니다 —
+              // Cursor 는 allTimeTotals.totalTokens 가 영원히 0 이라 hasData 가
+              // false 로 자연히 떨어지긴 하지만, 그러면 "관측 대기"(곧 값이 올
+              // 것 같은 문구)로 보여 사실과 다릅니다(같은 이유로
+              // src/views/DashboardView.jsx 의 usage-chart 도 이렇게 갈랐습니다).
+              const cursorState = provider.id === 'cursor' ? cursorSourceState(provider) : null;
+              const tokenBlocked = geminiTokensBlocked(provider) || provider.capabilities?.accounting === 'context_only';
               const hasData = !tokenBlocked && (provider.periodTokens?.totalTokens ?? 0) > 0;
               const rowPending = pending && Boolean(provider.collector?.detected) && !tokenBlocked;
               return (
-                <div className="table-row" role="row" key={provider.id} style={{ gridTemplateColumns: detailColumns }} title={geminiState?.detail ?? undefined}>
+                <div className="table-row" role="row" key={provider.id} style={{ gridTemplateColumns: detailColumns }} title={geminiState?.detail ?? cursorState?.detail ?? undefined}>
                   <strong>{provider.name}</strong>
                   {tokenCategories.map((category) => {
                     const value = categoryValue(provider.periodTokens, category.key);
@@ -259,7 +268,7 @@ export default function UsageView({ snapshot, api, pending = false }) {
                   })}
                   <strong>{tokenBlocked ? '—' : rowPending ? PENDING_LABEL : hasData ? formatTokens(provider.periodTokens?.totalTokens) : '—'}</strong>
                   {tokenBlocked
-                    ? <span className="quality">{geminiState.label}</span>
+                    ? <span className="quality">{geminiState?.label ?? cursorState?.label ?? '—'}</span>
                     : connected && hasData && !qualityMatchesPeriod
                     ? <span className="quality" title="품질 등급은 이번 달 창으로만 계산됩니다">등급 없음</span>
                     : connected && hasData

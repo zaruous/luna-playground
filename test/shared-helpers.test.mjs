@@ -7,6 +7,7 @@ import {
   hookProviderIds, providerQuotaWindows, resolvePeriodBreakdown, providerUnavailable,
   unavailableNotice, collectorSourceLine,
   sumTokenFields, serverQuotaState,
+  cursorSourceState, cursorContextText,
 } from '../src/shared.js';
 
 // 회계가 서로 반대인 두 provider 를 나란히 둡니다. 한쪽에서만 참인 식은 다른
@@ -368,6 +369,52 @@ test('geminiSourceState 는 둘 다 없으면 미설치다', () => {
     collector: { sources: { legacyChats: { present: false }, antigravity: { present: false } } },
   };
   assert.equal(geminiSourceState(empty).kind, 'not-installed');
+});
+
+test('cursorSourceState 는 CLI/IDE 표면과 절대 토큰 유무를 따로 구분한다', () => {
+  const mk = (over) => ({
+    id: 'cursor', name: 'Cursor', integration: 'connected',
+    collector: { sources: { cli: { present: false, chats: 0 }, ide: { present: false, composers: 0 } } },
+    cursorContext: null,
+    ...over,
+  });
+
+  assert.equal(cursorSourceState({ id: 'gemini' }), null, 'Cursor 가 아니면 null');
+
+  const notInstalled = cursorSourceState(mk());
+  assert.equal(notInstalled.kind, 'not-installed');
+
+  const detectedEmpty = cursorSourceState(mk({
+    collector: { sources: { cli: { present: true, chats: 1 }, ide: { present: false, composers: 0 } } },
+  }));
+  assert.equal(detectedEmpty.kind, 'detected-empty');
+
+  const withCliAbsolute = cursorSourceState(mk({
+    collector: { sources: { cli: { present: true, chats: 1 }, ide: { present: false, composers: 0 } } },
+    cursorContext: { totalTokens: 27766, windowTokens: 200000, absoluteUnavailable: false },
+  }));
+  assert.equal(withCliAbsolute.kind, 'context-snapshot-only');
+  assert.match(withCliAbsolute.detail, /요청 단위 입력\/출력 델타는 주지 않습니다/);
+
+  const ideOnlyPercent = cursorSourceState(mk({
+    collector: { sources: { cli: { present: false, chats: 0 }, ide: { present: true, composers: 1 } } },
+    cursorContext: { contextUsagePercent: 47.8, absoluteUnavailable: true },
+  }));
+  assert.equal(ideOnlyPercent.kind, 'context-percent-only');
+  assert.notEqual(ideOnlyPercent.detail, withCliAbsolute.detail, '절대 토큰이 없다는 사실은 다른 문구여야 합니다');
+});
+
+test('cursorContextText 는 절대 토큰을 우선하고, 없으면 백분율로, 둘 다 없으면 null 이다', () => {
+  assert.equal(cursorContextText(null), null);
+  assert.equal(
+    cursorContextText({ totalTokens: 27766, windowTokens: 200000, absoluteUnavailable: false }),
+    '27,766 / 200,000',
+  );
+  assert.equal(
+    cursorContextText({ contextUsagePercent: 47.8, absoluteUnavailable: true }),
+    '컨텍스트 47.8% 사용',
+  );
+  assert.equal(cursorContextText({ absoluteUnavailable: true }), null, '백분율도 없으면 지어내지 않습니다');
 });
 
 test('고를 수 없는 provider 는 왜 못 고르는지를 각자 다르게 말한다', () => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TableHead, ViewHead, sortRows, useSlowStamp, useTableSort } from './Bits.jsx';
 import ToolContentModal from './ToolContentModal.jsx';
-import { formatTokens, formatPercent, relativeTime, qualityLabels, PENDING_LABEL } from '../shared.js';
+import { formatTokens, formatPercent, relativeTime, qualityLabels, PENDING_LABEL, cursorContextText } from '../shared.js';
 
 // 상세 내역 — 프로젝트(cwd) → 세션 → 도구, 토큰량 중심.
 //
@@ -147,6 +147,10 @@ export default function DetailView({ snapshot, api, pending }) {
   const [openCall, setOpenCall] = useState(null);
 
   const [sort, toggleSort] = useTableSort(RECORD_COLUMNS, 'totalTokens');
+  // Cursor 프로젝트는 요청 델타 토큰이 없어 totalTokens 가 항상 0입니다(R7 —
+  // 가짜로 채우지 않음). 칩에 formatTokens(0) 을 그대로 찍으면 "쟀더니 0"으로
+  // 읽히므로 대시보드와 같은 방식으로 마지막 관측 컨텍스트를 대신 보여줍니다.
+  const cursorContext = snapshot?.providers?.find((provider) => provider.id === 'cursor')?.cursorContext ?? null;
 
   // 1층: 최근 작업 프로젝트. 기간을 좁히지 않는 이유는 "최근 작업" 이 이미
   // 정렬 기준이기 때문입니다 — 이번 달로 자르면 지난주까지 쓰던 프로젝트가
@@ -231,7 +235,7 @@ export default function DetailView({ snapshot, api, pending }) {
                 onClick={() => setActiveKey(project.projectKey)}
               >
                 {project.name}
-                <small>{formatTokens(project.totalTokens)} · {relativeTime(project.lastActivity)}</small>
+                <small>{project.provider === 'cursor' ? (cursorContextText(cursorContext) ?? '—') : formatTokens(project.totalTokens)} · {relativeTime(project.lastActivity)}</small>
               </button>
             ))}
           </div>
@@ -268,7 +272,17 @@ export default function DetailView({ snapshot, api, pending }) {
             ))}
           </div>
         ) : (
-          <div className="empty-projects"><strong>이 프로젝트에는 세션이 없어요.</strong></div>
+          <div className="empty-projects">
+            <strong>이 프로젝트에는 세션이 없어요.</strong>
+            {/* Cursor 프로젝트는 "최근 작업 프로젝트"(cursor_local_activity 기반)에는
+                뜨지만, 세션 목록은 요청 단위 원장(usage_events)에서만 옵니다 —
+                Cursor 는 거기 안 씁니다(docs/dev/cursor/decisions.md 결정 4).
+                아무 설명 없이 비어 있으면 "곧 채워질 것"으로 읽히므로(R7) 이유를
+                적습니다. */}
+            {activeProject?.provider === 'cursor'
+              ? <span>Cursor 는 요청 단위 세션 원장을 아직 지원하지 않습니다 — 이 프로젝트에서 관측한 컨텍스트 구성은 대시보드에서 볼 수 있어요.</span>
+              : null}
+          </div>
         )}
       </section>
 

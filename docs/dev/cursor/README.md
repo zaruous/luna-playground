@@ -166,20 +166,41 @@ Phase 0b와 Phase 1은 서로 의존하지 않아 병행 가능합니다. Phase 
       버그로 6행만 봤던 것이었고, 고쳐서 재실행해 149,698행 전체를 확인함(1,232개
       추가 breakdown, 창 크기 272000·300000 신규 관측)
 - [ ] `conversation` 카테고리 증가량과 실제 턴 경계·입출력 분리 가능 여부 검증
-- [ ] `cursor_local_activity`가 같은 파일을 반복 스캔해도 행이 늘지 않음(멱등) —
-      `composer_id` PK + upsert, breakdown은 "마지막 관측값 승리"
-- [ ] Cursor가 `PROVIDER_CATALOG`에서 `connected`로 승격되고, 대시보드에 provider
-      카드가 나타남
-- [ ] **요청 델타**를 전제하는 화면(usage 시계열, session, detail)의 어디에도
-      Cursor가 나타나지 않음 — breakdown은 그 화면들과 다른 별도 패널에만 나타남
+- [x] `cursor_local_activity`가 같은 파일을 반복 스캔해도 행이 늘지 않음(멱등) —
+      `composer_id` PK + upsert, breakdown은 "마지막 관측값 승리" —
+      `test/cursor-collector.test.mjs`의 "몇 번 다시 스캔해도 행 수와 값이 늘지 않는다"
+- [x] Cursor가 `PROVIDER_CATALOG`에서 `connected`로 승격되고, 대시보드에 provider
+      카드가 나타남 — `service/engine.mjs`에 `CursorCollector` 등록,
+      [dashboard.md T4](./menus/dashboard.md) 참고
+- [x] **요청 델타**를 전제하는 화면의 어디에도 Cursor가 나타나지 않음 — breakdown은
+      그 화면들과 다른 별도 패널에만 나타남. Cursor를 `connected`로 승격시키는 것은
+      전역 효과라(스냅샷의 모든 provider 목록에 영향) 대시보드 밖 화면도 함께
+      점검했습니다: `DashboardView.jsx`("AI별 사용량" 패널·캐시 적중 카드)는
+      `capabilities.accounting === 'context_only'`로 명시 배제. `UsageView.jsx`의
+      "provider별 상세" 표도 같은 누락이 있어 같은 방식으로 고쳤습니다(그전엔
+      Cursor 행에 "관측 대기"가 영구히 뜨는 결함이 있었음). `UsageView.jsx`의
+      토큰 추이·모델별 비중 차트와 `SessionView.jsx`의 provider 칩은
+      `usage_events`/`providerUnavailable()` 기반이라 원래도 안전했습니다.
+      `BudgetView.jsx`는 로컬 수집 상태만 말해 오해의 소지가 없고,
+      `ProjectView.jsx`는 애초에 Cursor를 제외한다고 화면에 이미 적혀 있습니다.
+      `DetailView.jsx`의 "최근 작업 프로젝트"(`getRecentProjectsAcrossProviders`
+      UNION)에는 Cursor 프로젝트가 뜨는데, 눌러도 세션 목록이 항상 비어
+      있었던 자리에 이유를 적는 문구를 추가했습니다 — session/detail 화면
+      자체를 편입시킨 것은 아닙니다(Phase 0b 전까지 그대로 배제)
 - [ ] `cwd`/`trackedGitRepos` 기반 프로젝트 귀속이 프로젝트 화면에 반영되고,
-      가림 설정이 다른 provider와 동일하게 적용됨
-- [ ] 응답·SQLite 바이트 어디에도 blob `content`, `cursorAuth/*`, `secret://*` 값이
+      가림 설정이 다른 provider와 동일하게 적용됨 — "최근 프로젝트 발자국"(대시보드)에는
+      반영됨(`getRecentProjectsAcrossProviders`의 UNION). `ProjectView.jsx`의
+      프로젝트 목록·상세는 아직 손대지 않음
+- [x] 응답·SQLite 바이트 어디에도 blob `content`, `cursorAuth/*`, `secret://*` 값이
       없음(센티넬 테스트로 고정 — 기존 privacy test 패턴 재사용). breakdown 파싱은
       카테고리 **키/표시명**(`system_prompt`, "System prompt" 등 고정 어휘)과 숫자만
-      읽고, 다른 필드 경로의 문자열은 안 읽습니다
-- [ ] Admin API를 호출하는 코드가 이 트랙에 전혀 없음(리뷰 체크리스트 항목) —
-      네트워크 호출 자체가 없으므로 레이트리밋 테스트가 필요 없음을 코드로 증명
+      읽고, 다른 필드 경로의 문자열은 안 읽습니다 — `test/cursor-collector.test.mjs`의
+      "대화 본문 · 시크릿이 SQLite 바이트와 스냅샷에 남지 않는다". IDE 쪽은 애초에
+      `cursorDiskKV`/`ItemTable`을 열지 않아(`composerHeaders`만 읽음) 그 테이블
+      자체가 코드 경로에 없습니다
+- [x] Admin API를 호출하는 코드가 이 트랙에 전혀 없음(리뷰 체크리스트 항목) —
+      네트워크 호출 자체가 없으므로 레이트리밋 테스트가 필요 없음을 코드로 증명 —
+      `service/providers/cursor/`에 `fetch`/URL 호출이 없음을 grep으로 확인
 
 ## 하지 않는 것
 
