@@ -214,6 +214,35 @@ M6a는 M6b의 전제 조건이 아니고 M6b도 M6a의 전제 조건이 아닙�
 같이 나타날 때는 [product rule](../../roadmap.md#product-rule)대로 라벨을 분리합니다
 (`local · 미확립` vs `server_verified`).
 
+### M6b 실측 (2026-08-26) — 실제 계정 키로 재확인, Cursor API는 두 종류였다
+
+로컬을 3차까지 훑고 나서 "그럼 남은 건 Cursor가 주는 API"라는 질문에, 문서만 읽지
+않고 실제 이 머신 Windows 환경변수에 있던 `CURSOR_API_KEY`로 직접 호출해
+검증했습니다. 결과: **Cursor의 "API"는 하나가 아니라 서로 다른 두 표면**이고, 이
+계정으로 열리는 쪽은 필요한 신호를 안 줍니다.
+
+| API 표면 | 실측 결과 | 판정 |
+|---|---|---|
+| **Admin API** (`/teams/*`, §5.3의 그것) | `GET /teams/members` → **401 Unauthorized** | `admin:*` scope 없음 — 이 계정(Team, Admin 아님)으론 지금 못 씀. M6b는 그대로 대기 |
+| **Cloud Agents API** (User API 키) | `GET /v1/me` → **200**, `{"apiKeyName":"COMP","userId":318580350,"userEmail":"kyjun.kim@miracom-inc.com",...}` | 유효한 User API 키가 맞음(admin 아님, 문서와 일치) |
+
+Cloud Agents API 쪽은 인증은 되지만 **관측 대상이 다릅니다** — 공식 엔드포인트 목록
+(`POST/GET /v1/agents`, `/v1/agents/{id}/runs`, `/v1/agents/{id}/usage` 등)을 확인한
+결과, 토큰 사용량을 주는 유일한 엔드포인트는 `GET /v1/agents/{id}/usage`인데 이건
+**`POST /v1/agents`로 API를 통해 새로 띄운 agent에만** 값이 생깁니다
+(`totalUsage.{inputTokens,outputTokens,cacheWriteTokens,cacheReadTokens,totalTokens}`,
+런 단위까지 나옴 — 어댑터 필드 이름과도 그대로 맞습니다). 지금까지 IDE(Composer)나
+CLI(`cursor-agent`)로 쌓은 **기존** 대화 이력을 조회하는 GET은 이 API 표면 어디에도
+없습니다 — "내 계정 전체 사용량"이 아니라 "내가 이 API로 새로 시킨 일"만 봅니다.
+
+**결론**: Admin API는 등급 문제(admin scope 없음)로 막혀 있고, User API(Cloud Agents
+API)는 등급 문제가 아니라 **관측 범위가 애초에 다릅니다**(신규 실행분만, 기존 이력
+불가) — 둘 다 요청 단위 토큰 델타(rows 10/11이 필요로 하는 신호)를 못 줍니다. 이
+표는 문서를 다시 읽어서가 아니라 실제 키로 두 엔드포인트를 호출해 나온 결과라
+[measurements.md 3차 조사](./measurements.md#확인된-것-3차-조사--다른-db-파일에-있는-건-아닌가-재확인-나머지-표면-전부-스캔)와
+같은 무게로 취급합니다 — M6a·M6b 둘 다 지금 이 계정으로는 rows 10/11을 채울 방법이
+없다는 뜻입니다.
+
 ## 하지 않는 것
 
 - Admin API 호출, API 키 입력 UI, `provider_credentials`/`provider_api_cursor` 테이블
