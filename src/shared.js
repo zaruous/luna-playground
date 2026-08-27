@@ -289,6 +289,33 @@ export const tokenCategories = [
   { key: 'reasoningTokens', label: '추론', tone: 'tk-reason' },
 ];
 
+// Cursor 컨텍스트 구성 카테고리. 키는 blob breakdown 이 실제로 쓰는 고정
+// 어휘입니다(docs/dev/cursor/measurements.md 실측) — 화면이 지어내지
+// 않습니다. summarized_conversation 은 컴팩션(압축)이 일어난 뒤에만 0이
+// 아니라 대부분의 관측에서는 빠져 있거나 0입니다.
+export const cursorCategoryLabels = {
+  system_prompt: '시스템 프롬프트',
+  tools: '도구 정의',
+  rules: '규칙',
+  skills: '스킬',
+  mcp: 'MCP',
+  subagents: '서브에이전트',
+  summarized_conversation: '압축된 대화',
+  conversation: '대화',
+};
+
+// 화면에 이미 없는 카테고리 키가 와도(향후 Cursor 가 카테고리를 늘리면)
+// 지어낸 라벨 대신 키 자체를 보여줍니다 — 없는 걸 안다고 말하지 않습니다.
+export function cursorCategoryLabel(key) {
+  return cursorCategoryLabels[key] ?? key;
+}
+
+// styles.css 의 .cx-* 클래스와 짝입니다. 모르는 키는 중립색(cx-other)으로
+// 떨어뜨립니다.
+export function cursorCategoryTone(key) {
+  return cursorCategoryLabels[key] ? `cx-${key}` : 'cx-other';
+}
+
 // 기간 합계 패널 문구. JSX 가 아니라 여기 두어 node:test 로 고정합니다.
 export const PERIOD_BREAKDOWN_NOTICES = Object.freeze({
   mergedProviders:

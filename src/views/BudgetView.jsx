@@ -170,6 +170,10 @@ export default function BudgetView({ snapshot, hookStatuses, api, actionBusy, on
                 <div className="stat-mini"><span>한도 snapshot</span><strong>{diagnostics.rateSnapshots.toLocaleString('ko-KR')}</strong></div>
                 <div className="stat-mini"><span>스캔 파일</span><strong>{diagnostics.scanFiles.toLocaleString('ko-KR')}</strong></div>
                 <div className="stat-mini"><span>누적 리셋</span><strong>{diagnostics.cumulativeResets.toLocaleString('ko-KR')}</strong></div>
+                {/* Cursor 활동(cursor_local_activity)은 usage_events 와 다른
+                    테이블이라 위 "사용 이벤트"에는 안 잡힙니다 — 별도 칸으로
+                    보여줘야 "0건"으로 안 읽힙니다(R7). */}
+                <div className="stat-mini"><span>Cursor 활동</span><strong>{diagnostics.cursorActivity.toLocaleString('ko-KR')}</strong></div>
               </div>
               <div className="kv"><span>SQLite</span><strong>{diagnostics.dbPath}</strong></div>
             </>

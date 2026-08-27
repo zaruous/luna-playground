@@ -10,6 +10,21 @@
    스킨과 무관하게 고정합니다: 색은 데이터 정체성을 따르지 스킨을 따르지 않습니다. */
 :root{--tk-input:#94661f;--tk-cached:#2f9c70;--tk-cachew:#3059a8;--tk-output:#cc6b3a;--tk-reason:#8a4fb0}
 .tk-input{background:var(--tk-input)}.tk-cached{background:var(--tk-cached)}.tk-cachew{background:var(--tk-cachew)}.tk-output{background:var(--tk-output)}.tk-reason{background:var(--tk-reason)}
+/* Cursor 컨텍스트 구성 카테고리 팔레트 — dataviz 스킬 validate_palette.js 통과
+   (surface #fffdf9, 인접쌍 CVD ΔE 12.5 protan, 정상시야 ΔE 15.7). tk-* 5색·
+   --good/--warm/--violet/--blue 의미 색과 안 겹치게 새로 골랐습니다. summarized_conversation
+   은 대비 2.93(<3:1, WARN)이라 항상 값 라벨과 함께 씁니다(relief). 스킨과 무관하게 고정합니다. */
+:root{--cx-system_prompt:#3d4fb0;--cx-tools:#0e9488;--cx-rules:#b8860b;--cx-skills:#a83e77;--cx-mcp:#d8552e;--cx-subagents:#0e76a3;--cx-summarized_conversation:#c68a12;--cx-conversation:#8a3550;--cx-other:#8a8f45}
+.cx-system_prompt{background:var(--cx-system_prompt)}.cx-tools{background:var(--cx-tools)}.cx-rules{background:var(--cx-rules)}.cx-skills{background:var(--cx-skills)}.cx-mcp{background:var(--cx-mcp)}.cx-subagents{background:var(--cx-subagents)}.cx-summarized_conversation{background:var(--cx-summarized_conversation)}.cx-conversation{background:var(--cx-conversation)}.cx-other{background:var(--cx-other)}
+.cursor-context-list{display:grid;gap:16px;margin-top:10px}
+.cursor-context-row{display:grid;gap:6px}
+.cursor-context-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:10px;color:var(--muted)}
+.cursor-context-head strong{color:var(--ink);font-size:11px}
+.cursor-context-head b{color:var(--ink)}
+.cursor-context-track{display:flex;height:18px;border-radius:6px;overflow:hidden;background:var(--card);gap:2px;border:1px solid var(--line)}
+.cursor-context-seg{height:100%}
+.cursor-context-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:8px;color:var(--muted)}
+.cursor-context-legend strong{color:var(--ink);font-weight:700}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:9px;color:var(--muted);padding-top:12px;border-top:1px dashed var(--line)}.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}.legend-off{opacity:.45}
 .table-row{display:grid;gap:10px;align-items:center;padding:11px 5px;border-top:1px dashed var(--line);font-size:11px}.table-row span{color:var(--muted)}.table-row strong{color:var(--ink)}.table-head{border:0;font-size:9px}.table-head span{color:var(--muted)}.table-total{border-top:1px solid var(--line)}
 .planned-panel{position:relative;overflow:hidden}.planned-copy{font-size:10px;color:var(--muted);margin:12px 0 0;line-height:1.6}.planned-copy code,.filter-note code{font-family:ui-monospace,Consolas,monospace;font-size:9px;background:var(--soft);padding:1px 5px;border-radius:5px}

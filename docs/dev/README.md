@@ -1,6 +1,6 @@
 # NyangTracker 개발 계획 (docs/dev)
 
-현재 코드에는 **Codex · Claude Code · Gemini CLI 어댑터**가 구현돼 있고(계획한 4종 중 셋 — Cursor는 M6), 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다. Cursor는 M6a(로컬 전용, [cursor/](./cursor/README.md))와 M6b(Admin API, 기존 §5.3)로 갈라졌고 둘 다 아직 미구현입니다.
+현재 코드에는 **Codex · Claude Code · Gemini CLI · Cursor 로컬** 어댑터가 구현돼 있고, 메뉴별 화면은 M1에서 `src/views/`로 분리됐습니다. Cursor는 M6a(로컬 전용, [cursor/](./cursor/README.md))와 M6b(Admin API, 기존 §5.3)로 갈라졌습니다 — **M6a는 dashboard·project·usage·budget 진단에 반영됐고**(session·detail은 Phase 0b 후속 조사 전이라 아직 배제), M6b(Admin API)는 실측만 마쳤고 미구현입니다.
 
 이 디렉터리는 그 다음 단계를 다룹니다. `docs/` 상위 문서가 **현재 구현된 것**을 기술하는 반면, `docs/dev/`는 **아직 구현하지 않은 것**을 기술합니다 — 다만 완료된 마일스톤(M1~M3 · M5 · M8 · M9 · M10)은 문서에 완료 표시를 남겨 무엇이 실제로 들어갔는지 되짚을 수 있게 합니다. M4는 동기화 절반만 들어갔고 완료 기준 하나가 미달이라 "완료"로 적지 않습니다.
 
@@ -12,7 +12,7 @@
 | [token-measurement-survey.md](./token-measurement-survey.md) | GitHub 오픈소스 트래커들의 토큰 측정 알고리즘 분석과 그로부터 도출한 설계 규칙 |
 | [provider-token-api.md](./provider-token-api.md) | 표준 어댑터 인터페이스 위에서 Codex/Claude/Cursor/Gemini 4종의 토큰 처리 API 설계 (Codex·Claude·Gemini 구현 완료) |
 | [gemini/](./gemini/README.md) | Gemini CLI 어댑터(M5) — 실측, agy(Antigravity CLI) 감지, 포맷·설계 |
-| [cursor/](./cursor/README.md) | Cursor 로컬 트랙(M6a) — 원격 사용량 배제, 로컬 저장소 실측과 메뉴별 적용 계획 (**계획 단계 — 미구현**) |
+| [cursor/](./cursor/README.md) | Cursor 로컬 트랙(M6a) — 원격 사용량 배제, 로컬 저장소 실측과 메뉴별 적용 계획 (**dashboard·project·usage·budget 반영됨 — session·detail은 Phase 0b 전이라 배제**) |
 | [cursor/기능적용가능성.md](./cursor/기능적용가능성.md) | 화면/기능 단위로 Cursor에 이번 M6a를 적용할 수 있는지, LLM별 기능지원표.md와 같은 O/△/X 양식으로 정리한 표 |
 | [claude/기능적용가능성.md](./claude/기능적용가능성.md) | `src/views/*.jsx`를 전부 읽어 화면 요소마다 Claude가 실제로 맞게 동작하는지 O/△/X로 정리(구현된 provider라 "적용 가능한가"가 아니라 "화면 전제와 실제 데이터가 어긋나는 자리"를 찾는 문서) |
 | [codex/기능적용가능성.md](./codex/기능적용가능성.md) | 같은 방식의 Codex 판 — `INSERT OR IGNORE` 원장 결함이 어느 화면 요소로 번지는지까지 추적 |
@@ -29,11 +29,11 @@
 | 문서 | 메뉴 | 현재 상태 |
 |---|---|---|
 | [menus/dashboard.md](./menus/dashboard.md) | `dashboard` (대시보드) | 구현됨 — 확장 대상 |
-| [menus/usage.md](./menus/usage.md) | `usage` (AI 사용량) | 구현됨 (M2) — 상세 표·CSV는 미구현, 열린 결함 하나([T1](./menus/usage.md#todo)) |
-| [menus/session.md](./menus/session.md) | `session` (세션 흐름) | **구현됨 (M8)** — 턴 단위 토큰 배분, 프로젝트 탭과 양방향 이동 |
-| [menus/project.md](./menus/project.md) | `project` (프로젝트) | 구현됨 (M2) |
-| [menus/detail.md](./menus/detail.md) | `detail` (상세 내역) | **구현됨** — 프로젝트(cwd) → 세션 → 도구 토큰량. 본문은 [내용 보기] 팝업 전용 통로로만 |
-| [menus/budget.md](./menus/budget.md) | `budget` (동기화) | **구현됨 (M4 동기화 절반)** — provider 상태 카드 · provider별 Hook · 한도 이력 · 대조 타임라인 · 진단 |
+| [menus/usage.md](./menus/usage.md) | `usage` (AI 사용량) | 구현됨 (M2) — 상세 표·CSV는 미구현, 열린 결함 하나([T1](./menus/usage.md#todo)). Cursor "컨텍스트 구성" 패널 반영됨([T2](./menus/usage.md#t2-cursor-컨텍스트-구성-반영--완료), M6a) |
+| [menus/session.md](./menus/session.md) | `session` (세션 흐름) | **구현됨 (M8)** — 턴 단위 토큰 배분, 프로젝트 탭과 양방향 이동. Cursor는 아직 배제(M6a Phase 0b 전) |
+| [menus/project.md](./menus/project.md) | `project` (프로젝트) | 구현됨 (M2). Cursor 프로젝트 반영됨([T3](./menus/project.md#t3-cursor-프로젝트-반영--완료), M6a) |
+| [menus/detail.md](./menus/detail.md) | `detail` (상세 내역) | **구현됨** — 프로젝트(cwd) → 세션 → 도구 토큰량. 본문은 [내용 보기] 팝업 전용 통로로만. Cursor는 아직 배제(M6a Phase 0b 전) |
+| [menus/budget.md](./menus/budget.md) | `budget` (동기화) | **구현됨 (M4 동기화 절반)** — provider 상태 카드 · provider별 Hook · 한도 이력 · 대조 타임라인 · 진단(Cursor `cursorActivity` 카운터 포함, M6a) |
 | [menus/alert.md](./menus/alert.md) | `alert` (알림) | 미구현 |
 | [menus/settings.md](./menus/settings.md) | `settings` (설정) | 미구현 (스킨 선택만 헤더에 존재) |
 

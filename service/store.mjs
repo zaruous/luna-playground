@@ -1009,7 +1009,13 @@ export class UsageStore {
         UNION ALL
         SELECT
           'cursor' AS provider,
-          COALESCE(NULLIF(project_name,''), 'unknown-project') AS project_name,
+          -- usage_events 몫과 다른 자리표시자를 씁니다('(미분류)') — Cursor
+          -- 프로젝트 목록(#getCursorProjectBreakdown/#resolveProjectKey)이
+          -- 이미 그 이름으로 projectKey 를 해시합니다. 여기서 'unknown-project'
+          -- 를 쓰면 이 목록(대시보드 "최근 프로젝트 발자국")이 내려주는 키와
+          -- 프로젝트 화면이 아는 키가 cwd 없는 컴포저에서만 서로 달라져서,
+          -- 그 칩을 클릭하면 있는 프로젝트인데도 "찾지 못했어요"/404 가 납니다(T4).
+          COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name,
           cwd, 0 AS total_tokens, 0 AS input_tokens, 0 AS cached_input_tokens,
           last_updated_at AS last_activity,
           NULL AS model
@@ -1276,51 +1282,128 @@ export class UsageStore {
   }
 
   getProjectBreakdown({ provider = null, since = null, until = null, limit = 100 } = {}) {
-    const { where, args } = this.#usageFilter({ provider, since, until });
+    const rows = [];
+    // Cursor 는 usage_events 에 없습니다(결정 4) — provider 필터가 다른
+    // provider 를 명시했으면 이 SELECT 는 아예 스킵합니다.
+    if (provider !== 'cursor') {
+      const { where, args } = this.#usageFilter({ provider: provider === 'cursor' ? null : provider, since, until });
+      rows.push(...this.db.prepare(`
+        SELECT
+          provider,
+          COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name,
+          MAX(cwd) AS cwd,
+          MAX(model) AS model,
+          COUNT(DISTINCT session_id) AS session_count,
+          COUNT(DISTINCT model) AS model_count,
+          MAX(COALESCE(event_timestamp, observed_at)) AS last_activity,
+          ${this.#tokenSums()}
+        FROM usage_events
+        ${where}
+        GROUP BY provider, project_name
+        ORDER BY total_tokens DESC
+        LIMIT ?
+      `).all(...args, limit).map((row) => ({
+        provider: row.provider,
+        name: row.project_name,
+        cwd: row.cwd,
+        model: row.model,
+        sessionCount: Number(row.session_count) || 0,
+        modelCount: Number(row.model_count) || 0,
+        lastActivity: row.last_activity,
+        tokens: this.#tokensFrom(row),
+        totalTokens: Number(row.total_tokens) || 0,
+      })));
+    }
+    // Cursor 몫은 뒤에 이어 붙입니다 — 위 정렬(토큰 내림차순)에 섞어 넣지
+    // 않습니다. Cursor 에는 비교 가능한 토큰 총량이 없어(R7), 없는 걸 0으로
+    // 채워 토큰 순위에 끼워 넣으면 실제로 활발한 프로젝트가 조용히 맨 뒤로
+    // 밀리고 LIMIT 에 잘려 나갈 수 있습니다. 이 메서드가 토큰 순을 유지하는
+    // 것은 의도된 동작입니다(test/usage-aggregation.test.mjs "프로젝트 화면은
+    // 일부러 토큰 순으로 남깁니다") — 그 순서를 그대로 두고 Cursor 는 자기
+    // 그룹 안에서만 최근 순으로 정렬해 별도로 채웁니다.
+    if (!provider || provider === 'cursor') {
+      rows.push(...this.#getCursorProjectBreakdown({ since, until, limit }));
+    }
+    const aliases = this.#aliasIndex();
+    return rows.map((row) => this.#applyProjectPrivacy(row, aliases));
+  }
+
+  // Cursor 프로젝트 목록. cursor_local_activity 에는 model/session_id 개념이
+  // 없어(결정 4) tokens/model/modelCount 는 지어내지 않고 null 로 남깁니다 —
+  // 화면은 provider==='cursor' 일 때 이 필드들을 "—"로 표시해야 합니다(R7).
+  // sessionCount 자리에는 대신 컴포저(대화) 수를 넣습니다 — 뜻이 다르므로
+  // 화면 라벨도 달라야 합니다.
+  #getCursorProjectBreakdown({ since = null, until = null, limit = 100 } = {}) {
+    const clauses = [];
+    const args = [];
+    if (since) { clauses.push('last_updated_at >= ?'); args.push(since); }
+    if (until) { clauses.push('last_updated_at < ?'); args.push(until); }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const rows = this.db.prepare(`
       SELECT
-        provider,
         COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name,
         MAX(cwd) AS cwd,
-        MAX(model) AS model,
-        COUNT(DISTINCT session_id) AS session_count,
-        COUNT(DISTINCT model) AS model_count,
-        MAX(COALESCE(event_timestamp, observed_at)) AS last_activity,
-        ${this.#tokenSums()}
-      FROM usage_events
+        COUNT(*) AS composer_count,
+        COALESCE(SUM(request_count),0) AS request_count,
+        MAX(last_updated_at) AS last_activity
+      FROM cursor_local_activity
       ${where}
-      GROUP BY provider, project_name
-      ORDER BY total_tokens DESC
+      GROUP BY project_name
+      ORDER BY last_activity DESC
       LIMIT ?
     `).all(...args, limit);
-    const aliases = this.#aliasIndex();
-    return rows.map((row) => this.#applyProjectPrivacy({
-      provider: row.provider,
+    return rows.map((row) => ({
+      provider: 'cursor',
       name: row.project_name,
       cwd: row.cwd,
-      model: row.model,
-      sessionCount: Number(row.session_count) || 0,
-      modelCount: Number(row.model_count) || 0,
+      model: null,
+      sessionCount: Number(row.composer_count) || 0,
+      modelCount: null,
       lastActivity: row.last_activity,
-      tokens: this.#tokensFrom(row),
-      totalTokens: Number(row.total_tokens) || 0,
-    }, aliases));
+      tokens: null,
+      totalTokens: null,
+      requestCount: Number(row.request_count) || 0,
+    }));
   }
 
   // project_key는 해시라 SQL에서 역산할 수 없습니다. 그룹 목록에서 해시를
   // 계산해 대조합니다 — 프로젝트 수가 수십 단위라 비용이 무시할 수준입니다.
+  // usage_events 뿐 아니라 cursor_local_activity 의 프로젝트 이름도 함께
+  // 봅니다 — 여기서 cursor 몫을 빼먹으면 대시보드/상세 내역 화면이 이미
+  // 내려주는 Cursor projectKey(getRecentProjectsAcrossProviders)를 눌러도
+  // 이 화면에서 항상 404 가 납니다.
   #resolveProjectKey(projectKey) {
-    const rows = this.db.prepare(`
+    const usageRows = this.db.prepare(`
       SELECT DISTINCT provider, COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name FROM usage_events
-    `).all();
-    return rows
-      .map((row) => ({ provider: row.provider, name: row.project_name }))
-      .find((row) => projectKeyOf(row.provider, row.name) === projectKey) ?? null;
+    `).all().map((row) => ({ provider: row.provider, name: row.project_name }));
+    const cursorRows = this.db.prepare(`
+      SELECT DISTINCT COALESCE(NULLIF(project_name,''), '(미분류)') AS project_name FROM cursor_local_activity
+    `).all().map((row) => ({ provider: 'cursor', name: row.project_name }));
+    return [...usageRows, ...cursorRows].find((row) => projectKeyOf(row.provider, row.name) === projectKey) ?? null;
   }
 
   getProjectDetail({ projectKey, since = null, until = null } = {}) {
     const target = this.#resolveProjectKey(projectKey);
     if (!target) return null;
+    if (target.provider === 'cursor') {
+      const [project] = this.getProjectBreakdown({ provider: 'cursor', since, until, limit: 1000 })
+        .filter((row) => row.projectKey === projectKey);
+      if (!project) return null;
+      return {
+        project,
+        // 모델 분포·세션 표는 요청 단위 원장 개념이라 Cursor 에는 없습니다
+        // (기능적용가능성.md "프로젝트" 절 4·5번, X — 세션 흐름 화면과 같은
+        // 이유). 지어내지 않고 빈 배열로 남깁니다 — 화면이 그 뜻을 설명합니다.
+        models: [],
+        sessions: [],
+        // (신규) "Cursor 활동" 카드 — 위 둘이 못 채우는 자리를 실제로 있는
+        // 신호(요청 수·컨텍스트 breakdown·변경 라인)로 대신 채웁니다
+        // (기능적용가능성.md "프로젝트" 절 6번). target.name 을 그대로
+        // 넘깁니다 — '' 로 바꿔치기하면 cwd 없는 컴포저(실제 컬럼값은 SQL
+        // NULL)를 놓칩니다(project_name = '' 은 NULL 을 매칭하지 않음, T4).
+        cursorActivity: this.getCursorProjectActivity({ projectName: target.name, since, until }),
+      };
+    }
     const [project] = this.getProjectBreakdown({ provider: target.provider, since, until, limit: 1000 })
       .filter((row) => row.projectKey === projectKey);
     if (!project) return null;
@@ -1341,6 +1424,101 @@ export class UsageStore {
         share: total > 0 ? (Number(row.total_tokens) || 0) / total : 0,
       })),
       sessions: this.getProjectSessions({ projectKey, since, until }),
+    };
+  }
+
+  // (신규) 프로젝트 상세의 "Cursor 활동" 보조 카드 전용 — 그 프로젝트에 속한
+  // 컴포저(대화) 전부의 요청 수·변경 라인 합계와, 그중 가장 최근 관측된
+  // 컨텍스트 구성(breakdown)을 함께 줍니다. surface 가 'ide' 인 컴포저는
+  // 절대 토큰이 없으므로(파서 스코프 결정) contextTotalTokens/Breakdown 은
+  // 자연히 null 로 남습니다 — 지어내지 않습니다(R7).
+  getCursorProjectActivity({ projectName, since = null, until = null } = {}) {
+    // '(미분류)' 는 프로젝트 목록·#resolveProjectKey 가 쓰는 표시용 이름이지
+    // 실제 컬럼값이 아닙니다 — cwd 없는 컴포저는 project_name 이 빈 문자열이
+    // 아니라 SQL NULL 이라(parser.mjs, cwd 없으면 null 대입), 그냥
+    // `project_name = ''` 로 매칭하면 그 행들을 전부 놓쳐서 목록에 보이는
+    // sessionCount(0이 아님)와 이 카드가 보여주는 0 이 서로 모순됩니다(T4).
+    // #getCursorProjectBreakdown/#resolveProjectKey 와 같은 COALESCE 로 맞춥니다.
+    const clauses = ["COALESCE(NULLIF(project_name,''), '(미분류)') = ?"];
+    const args = [projectName ?? '(미분류)'];
+    if (since) { clauses.push('last_updated_at >= ?'); args.push(since); }
+    if (until) { clauses.push('last_updated_at < ?'); args.push(until); }
+    const rows = this.db.prepare(`
+      SELECT composer_id, surface, last_updated_at, request_count, lines_added, lines_removed,
+             context_usage_percent, context_total_tokens, context_window_tokens, context_breakdown
+      FROM cursor_local_activity
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY last_updated_at DESC
+    `).all(...args);
+    const totals = rows.reduce((acc, row) => {
+      acc.requestCount += Number(row.request_count) || 0;
+      acc.linesAdded += Number(row.lines_added) || 0;
+      acc.linesRemoved += Number(row.lines_removed) || 0;
+      return acc;
+    }, { requestCount: 0, linesAdded: 0, linesRemoved: 0 });
+    const latest = rows[0] ?? null;
+    return {
+      composerCount: rows.length,
+      requestCount: totals.requestCount,
+      linesAdded: totals.linesAdded,
+      linesRemoved: totals.linesRemoved,
+      lastObserved: latest ? {
+        composerId: latest.composer_id,
+        surface: latest.surface,
+        observedAt: latest.last_updated_at,
+        contextUsagePercent: latest.context_usage_percent == null ? null : Number(latest.context_usage_percent),
+        contextTotalTokens: latest.context_total_tokens == null ? null : Number(latest.context_total_tokens),
+        contextWindowTokens: latest.context_window_tokens == null ? null : Number(latest.context_window_tokens),
+        contextBreakdown: latest.context_breakdown ? JSON.parse(latest.context_breakdown) : null,
+      } : null,
+    };
+  }
+
+  // (신규) usage 화면의 "Cursor — 컨텍스트 구성" 패널 전용
+  // (docs/dev/cursor/README.md "usage" 절, GET /api/v1/cursor/context).
+  // 요청 델타가 아니라 "그 시점 컨텍스트 구성 스냅샷"이라 getUsageTimeseries
+  // 와 절대 같은 모양을 안 씁니다(결정 1) — 기간 내 컴포저(대화)별 마지막
+  // 관측 breakdown 을 그대로 나열합니다. 합산(SUM)하지 않습니다 — 서로 다른
+  // 시점의 컨텍스트 스냅샷을 더하면 뜻이 없어집니다.
+  //
+  // context_breakdown 이 있는 행만 냅니다 — IDE 표면은 blob 을 컴포저에
+  // 귀속시킬 근거가 없어 이 컬럼이 항상 NULL 입니다(파서 스코프 결정). 그래서
+  // 이 패널에는 CLI 관측만 나타납니다 — 조용히 섞지 않고 그 사실 자체를
+  // 응답의 ideExcluded 카운트로 드러냅니다.
+  getCursorContextBreakdown({ since = null, until = null } = {}) {
+    const clauses = [];
+    const args = [];
+    if (since) { clauses.push('last_updated_at >= ?'); args.push(since); }
+    if (until) { clauses.push('last_updated_at < ?'); args.push(until); }
+    const scoped = clauses.length ? `AND ${clauses.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT composer_id, surface, project_name, cwd, last_updated_at,
+             context_total_tokens, context_window_tokens, context_breakdown
+      FROM cursor_local_activity
+      WHERE context_breakdown IS NOT NULL ${scoped}
+      ORDER BY last_updated_at ASC
+    `).all(...args);
+    const ideClauses = ['context_breakdown IS NULL', ...clauses];
+    const ideExcluded = this.db.prepare(`
+      SELECT COUNT(*) AS n FROM cursor_local_activity WHERE ${ideClauses.join(' AND ')}
+    `).get(...args).n;
+    const aliases = this.#aliasIndex();
+    return {
+      composers: rows.map((row) => {
+        const { name, cwd, redacted } = this.#applyProjectPrivacy({ provider: 'cursor', name: row.project_name, cwd: row.cwd }, aliases);
+        return {
+          composerId: row.composer_id,
+          surface: row.surface,
+          projectName: name,
+          cwd,
+          redacted,
+          observedAt: row.last_updated_at,
+          totalTokens: row.context_total_tokens == null ? null : Number(row.context_total_tokens),
+          windowTokens: row.context_window_tokens == null ? null : Number(row.context_window_tokens),
+          breakdown: row.context_breakdown ? JSON.parse(row.context_breakdown) : null,
+        };
+      }),
+      ideExcluded: Number(ideExcluded) || 0,
     };
   }
 

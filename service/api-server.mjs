@@ -559,6 +559,18 @@ export class UsageApiServer {
       }));
       return;
     }
+    // Cursor 전용 — 요청 델타가 아니라 컨텍스트 구성 스냅샷이라 위 시계열과
+    // 계약이 다릅니다(docs/dev/cursor/README.md "usage" 절, 결정 1). 그래서
+    // getUsageTimeseries 의 `tokens:{...}` 모양에 끼워 넣지 않고 별도
+    // 엔드포인트로 둡니다 — 섞으면 그 계약을 읽는 모든 코드가 "이 tokens가
+    // 델타인지 스냅샷인지"를 다시 물어야 합니다.
+    if (req.method === 'GET' && pathname === `${API_PREFIX}/cursor/context`) {
+      json(res, 200, this.usageEngine.store.getCursorContextBreakdown({
+        since: this.#since(query),
+        until: query.get('until'),
+      }));
+      return;
+    }
     // 상세 내역 화면의 1층: 최근 **작업한** 프로젝트. 토큰 순이 아니라 마지막
     // 활동 순입니다 — 토큰 순으로 두면 몇 주 전의 큰 프로젝트가 자리를 차지해
     // 오늘 만진 프로젝트가 안 보입니다(store 의 getRecentProjects 머리말).

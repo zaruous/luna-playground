@@ -211,12 +211,16 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
                       서로 무관한 프로젝트처럼 보입니다 — 상세를 열어야만
                       보이던 경로를 목록에서도 바로 대조할 수 있게 합니다. */}
                   <small className="project-item-cwd" title={item.cwd ?? undefined}>{item.redacted ? '경로 가림' : (item.cwd || '경로 메타데이터 없음')}</small>
-                  <small>{formatTokens(item.totalTokens)} · {providerCatalog.find((meta) => meta.id === item.provider)?.name ?? item.provider}</small>
+                  {/* Cursor 는 요청 단위 토큰이 없습니다(결정 4) — totalTokens 가
+                      null 이라 formatTokens(null) 을 그대로 찍으면 "0"으로 보여
+                      "쟀는데 0"처럼 읽힙니다(대시보드에서 실측된 문제, R7). 대신
+                      실제로 있는 신호(대화 수)를 보여줍니다. */}
+                  <small>{item.totalTokens == null ? `요청 ${item.requestCount ?? 0}건 · 대화 ${item.sessionCount ?? 0}개` : formatTokens(item.totalTokens)} · {providerCatalog.find((meta) => meta.id === item.provider)?.name ?? item.provider}</small>
                 </button>
               ))}
               {!filtered.length && <p className="filter-note">검색 결과가 없어요.</p>}
             </div>
-            <p className="filter-note">Cursor는 Admin API가 프로젝트 정보를 주지 않아 이 목록에 나타나지 않습니다.</p>
+            <p className="filter-note">Cursor 프로젝트는 요청 단위 토큰이 없어 총 토큰 대신 요청·대화 수로 표시됩니다 — 서버(Admin API)가 아니라 로컬 로그(CLI+IDE)에서 옵니다.</p>
           </section>
 
           <div className="view-stack">
@@ -228,9 +232,13 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
                     {providerMeta ? <span className={`ai-mark ${providerMeta.tone}`}>{providerMeta.short}</span> : null}
                   </div>
                   <div className="stat-mini-grid">
-                    <div className="stat-mini"><span>총 토큰</span><strong>{formatTokens(project.totalTokens)}</strong></div>
-                    <div className="stat-mini"><span>세션</span><strong className="mint-text">{project.sessionCount}</strong></div>
-                    <div className="stat-mini"><span>모델</span><strong className="violet-text">{project.modelCount}종</strong></div>
+                    {/* Cursor 는 요청 단위 토큰·모델 개념이 없습니다(결정 4) —
+                        0 으로 채우지 않고 "—"로 남깁니다(R7). 세션 자리는
+                        composer(대화) 수로 대신합니다 — 뜻이 달라 라벨도
+                        다르게 적습니다. */}
+                    <div className="stat-mini"><span>총 토큰</span><strong>{project.totalTokens == null ? '—' : formatTokens(project.totalTokens)}</strong></div>
+                    <div className="stat-mini"><span>{project.provider === 'cursor' ? '대화' : '세션'}</span><strong className="mint-text">{project.sessionCount}</strong></div>
+                    <div className="stat-mini"><span>모델</span><strong className="violet-text">{project.modelCount == null ? '—' : `${project.modelCount}종`}</strong></div>
                     <div className="stat-mini"><span>최근 활동</span><strong className="orange-text">{relativeTime(project.lastActivity)}</strong></div>
                   </div>
                   <div className="alias-row">
@@ -242,16 +250,47 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
                   </div>
                 </section>
 
+                {/* (신규) "Cursor 활동" 보조 카드 — 위 카드의 총 토큰/모델
+                    자리가 "—"로 남는 대신, cursor_local_activity 가 실제로
+                    주는 신호(요청 수·변경 라인·마지막 관측 컨텍스트)를
+                    보여줍니다(기능적용가능성.md "프로젝트" 절 6번). */}
+                {project.provider === 'cursor' && detail.cursorActivity ? (
+                  <section className="panel">
+                    <div className="panel-head"><div><h2>Cursor 활동 <span>••</span></h2><p className="panel-sub">요청 수·변경 라인은 이 프로젝트에 속한 대화 {detail.cursorActivity.composerCount}개의 합계</p></div></div>
+                    <div className="stat-mini-grid">
+                      <div className="stat-mini"><span>요청</span><strong className="mint-text">{detail.cursorActivity.requestCount.toLocaleString('ko-KR')}</strong></div>
+                      <div className="stat-mini"><span>추가된 줄</span><strong className="mint-text">+{detail.cursorActivity.linesAdded.toLocaleString('ko-KR')}</strong></div>
+                      <div className="stat-mini"><span>삭제된 줄</span><strong className="orange-text">-{detail.cursorActivity.linesRemoved.toLocaleString('ko-KR')}</strong></div>
+                      <div className="stat-mini">
+                        <span>마지막 관측 컨텍스트</span>
+                        <strong className="violet-text">
+                          {detail.cursorActivity.lastObserved?.contextTotalTokens != null
+                            ? `${detail.cursorActivity.lastObserved.contextTotalTokens.toLocaleString('ko-KR')} / ${detail.cursorActivity.lastObserved.contextWindowTokens?.toLocaleString('ko-KR') ?? '?'}`
+                            : detail.cursorActivity.lastObserved?.contextUsagePercent != null
+                              ? formatPercent(detail.cursorActivity.lastObserved.contextUsagePercent, 1)
+                              : '—'}
+                        </strong>
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
+
                 <section className="panel">
                   <div className="panel-head"><div><h2>모델 분포 <span>••</span></h2></div></div>
-                  <div className="gauge-list">
-                    {detail.models.map((item) => (
-                      <div className="model-row" key={item.model}>
-                        <div className="model-copy"><span>{item.model}</span><strong>{formatTokens(item.tokens.totalTokens)}</strong><small>{formatPercent(item.share * 100, 1)}</small></div>
-                        <div className="quota-track"><i style={{ width: `${item.share * 100}%` }} /></div>
-                      </div>
-                    ))}
-                  </div>
+                  {detail.models.length ? (
+                    <div className="gauge-list">
+                      {detail.models.map((item) => (
+                        <div className="model-row" key={item.model}>
+                          <div className="model-copy"><span>{item.model}</span><strong>{formatTokens(item.tokens.totalTokens)}</strong><small>{formatPercent(item.share * 100, 1)}</small></div>
+                          <div className="quota-track"><i style={{ width: `${item.share * 100}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : project.provider === 'cursor' ? (
+                    <div className="empty-projects"><strong>Cursor 는 요청 단위 모델·토큰이 없어요.</strong><span>로컬 로그에는 그 모델이 쓴 토큰 수가 없어 분포를 만들 수 없습니다 — 지어내지 않습니다.</span></div>
+                  ) : (
+                    <div className="empty-projects"><strong>이 기간에 모델 기록이 없어요.</strong></div>
+                  )}
                 </section>
 
                 <section className="panel">
@@ -262,9 +301,16 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
                           "이 프로젝트가 얼마를 썼나" 다음 질문은 늘 "어느 턴이
                           비쌌고 그 턴이 무엇에 썼나" 이고, 그걸 보려고 화면을
                           옮겨 다니게 하지 않습니다. */}
-                      <p className="panel-sub">최근 {detail.sessions.length}개 · <strong>행을 누르면</strong> 그 세션의 비싼 턴과 턴 상세가 아래에 펼쳐집니다</p>
+                      <p className="panel-sub">
+                        {project.provider === 'cursor'
+                          ? '요청 단위 세션 원장이 없어 이 표는 채워지지 않습니다'
+                          : <>최근 {detail.sessions.length}개 · <strong>행을 누르면</strong> 그 세션의 비싼 턴과 턴 상세가 아래에 펼쳐집니다</>}
+                      </p>
                     </div>
                   </div>
+                  {project.provider === 'cursor' ? (
+                    <div className="empty-projects"><strong>Cursor 는 이 표에 나타나지 않아요.</strong><span>세션 흐름 화면과 같은 이유입니다 — 요청 단위 턴 경계가 아직 없어(Phase 0b 대기) 비싼 턴을 가릴 수 없습니다. 대화 단위 활동은 위 "Cursor 활동" 카드를 보세요.</span></div>
+                  ) : (
                   <div className="project-table" role="table">
                     <TableHead columns={SESSION_COLUMNS} sort={sessionSort} onSort={toggleSessionSort} style={{ gridTemplateColumns: sessionColumnTemplate }} />
                     {sortedSessions.map((session) => {
@@ -315,6 +361,7 @@ export default function ProjectView({ snapshot, api, focus, pending = false, onN
                       );
                     })}
                   </div>
+                  )}
                 </section>
               </>
             ) : (

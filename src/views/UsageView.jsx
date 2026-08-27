@@ -4,9 +4,9 @@ import StackedBars from './Chart.jsx';
 import {
   buildChartColumns, buildProviderTokenSplits, decomposeTokens, formatTokens, formatPercent,
   qualityBadge, qualityFieldSummary, PENDING_LABEL, resolvePeriodBreakdown,
-  sumTokenFields, tokenCategories, tokensText,
+  sumTokenFields, tokenCategories, tokensText, relativeTime,
   geminiSourceState, geminiTokensBlocked, providerUnavailable,
-  cursorSourceState,
+  cursorSourceState, cursorCategoryLabel, cursorCategoryTone,
 } from '../shared.js';
 
 const detailColumns = '1.1fr repeat(6, .8fr) .9fr';
@@ -66,6 +66,11 @@ export default function UsageView({ snapshot, api, pending = false }) {
   const [timeseries, setTimeseries] = useState(null);
   const [models, setModels] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  // Cursor 컨텍스트 구성. 위 시계열과 완전히 다른 계약(요청 델타가 아니라
+  // 스냅샷)이라 별도 상태·별도 요청으로 갑니다(docs/dev/cursor/README.md
+  // "usage" 절, service/store.mjs getCursorContextBreakdown 주석).
+  const [cursorContext, setCursorContext] = useState(null);
+  const [cursorContextError, setCursorContextError] = useState(null);
 
   const stamp = useSlowStamp(snapshot?.generatedAt ?? null);
 
@@ -88,6 +93,15 @@ export default function UsageView({ snapshot, api, pending = false }) {
       .catch((error) => { if (active) setLoadError(error.message || '불러오지 못했습니다'); });
     return () => { active = false; };
   }, [api, period, bucket, providerFilter, stamp]);
+
+  useEffect(() => {
+    if (!api?.usage?.getCursorContext) return undefined;
+    let active = true;
+    api.usage.getCursorContext({ since: sinceFor(period), all: period === 'all' ? 1 : null })
+      .then((payload) => { if (active) { setCursorContext(payload); setCursorContextError(null); } })
+      .catch((error) => { if (active) setCursorContextError(error.message || '불러오지 못했습니다'); });
+    return () => { active = false; };
+  }, [api, period, stamp]);
 
   // 시계열은 (버킷 × provider) 로 옵니다. provider 를 버리고 합치면 회계가
   // 섞여 decomposeTokens fallback 이 캐시 읽기를 두 번 셉니다(R4).
@@ -144,6 +158,15 @@ export default function UsageView({ snapshot, api, pending = false }) {
   const qualityMatchesPeriod = period === 'month';
   const [detailSort, toggleDetailSort] = useTableSort(DETAIL_COLUMNS, null);
   const sortedRows = useMemo(() => sortRows(rows, DETAIL_COLUMNS, detailSort), [rows, detailSort]);
+
+  // 최신 순으로 뒤집고 너무 길면 자릅니다 — 서버는 last_updated_at ASC 로
+  // 줍니다(합산이 아니라 나열이라 정렬 기준 자체에 뜻이 없어 서버가 강제하지
+  // 않습니다). 자른 개수는 조용히 버리지 않고 문구로 남깁니다.
+  const CURSOR_CONTEXT_LIMIT = 20;
+  const cursorComposers = useMemo(() => {
+    const all = [...(cursorContext?.composers ?? [])].reverse();
+    return { shown: all.slice(0, CURSOR_CONTEXT_LIMIT), total: all.length };
+  }, [cursorContext]);
 
   return (
     <>
@@ -284,6 +307,75 @@ export default function UsageView({ snapshot, api, pending = false }) {
               );
             })}
           </div>
+        </section>
+
+        {/* Cursor 전용 — 위 시계열·상세 표에는 절대 안 섞습니다(요청 델타가
+            아니라 그 시점 컨텍스트 구성 스냅샷이라 계약이 다름, 결정 1).
+            IDE 표면 컴포저는 breakdown 이 없어 이 패널에 안 나타납니다 — 그
+            사실을 ideExcluded 로 그대로 드러냅니다. */}
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Cursor — 컨텍스트 구성 <span>••</span></h2>
+              <p className="panel-sub">요청 델타가 아니라 마지막 관측 스냅샷 · 막대는 그 시점 컨텍스트 창(창 크기 = 100%) 안의 카테고리별 점유</p>
+            </div>
+            <span className="quality local">로컬 관측 · 스냅샷</span>
+          </div>
+          {cursorContextError ? (
+            <div className="empty-projects"><strong>불러오지 못했어요.</strong><span>{cursorContextError}</span></div>
+          ) : !cursorContext ? (
+            <div className="empty-projects"><strong>{PENDING_LABEL}</strong></div>
+          ) : cursorComposers.total === 0 ? (
+            <div className="empty-projects">
+              <strong>이 기간에 관측된 CLI 대화가 없어요.</strong>
+              <span>{cursorContext.ideExcluded
+                ? `IDE(Composer) 컴포저 ${cursorContext.ideExcluded.toLocaleString('ko-KR')}개는 있지만, blob 을 컴포저에 귀속시킬 근거가 없어 이 패널에는 CLI 관측만 나타납니다.`
+                : 'Cursor CLI 로그가 발견되면 대화별 컨텍스트 구성이 여기에 채워집니다.'}</span>
+            </div>
+          ) : (
+            <>
+              <div className="cursor-context-list">
+                {cursorComposers.shown.map((item) => {
+                  const categories = Object.entries(item.breakdown ?? {});
+                  // windowTokens 가 없으면(그 blob 에 필드 5.2 가 없던 관측) 분모가
+                  // totalTokens 로 대체됩니다 — 그러면 막대는 "창 크기 대비"가 아니라
+                  // "합계 대비" 100% 가 되어 위 부제(패널 subtitle)와 뜻이 달라지므로,
+                  // 그 사실을 이 행에서 직접 밝힙니다(R7 — 창 크기를 잰 것처럼 보이면 안 됨).
+                  const windowUnknown = item.windowTokens == null;
+                  const denom = item.windowTokens || item.totalTokens || 1;
+                  return (
+                    <div className="cursor-context-row" key={item.composerId}>
+                      <div className="cursor-context-head">
+                        <span>{item.redacted ? '(가림)' : (item.projectName || item.cwd || '프로젝트 미확인')} · {relativeTime(item.observedAt)}{windowUnknown ? ' · 창 크기 미상(막대는 합계 기준)' : ''}</span>
+                        <b>{item.totalTokens != null ? `${item.totalTokens.toLocaleString('ko-KR')} / ${item.windowTokens != null ? item.windowTokens.toLocaleString('ko-KR') : '?'}` : '—'}</b>
+                      </div>
+                      <div className="cursor-context-track">
+                        {categories.map(([key, tokens]) => (
+                          <div
+                            key={key}
+                            className={`cursor-context-seg ${cursorCategoryTone(key)}`}
+                            style={{ width: `${Math.max(0, Math.min(100, (tokens / denom) * 100))}%` }}
+                            title={`${cursorCategoryLabel(key)} ${formatTokens(tokens)}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="cursor-context-legend">
+                        {categories.map(([key, tokens]) => (
+                          <span key={key}><i className={`legend-dot ${cursorCategoryTone(key)}`} />{cursorCategoryLabel(key)} <strong>{formatTokens(tokens)}</strong></span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="filter-note">
+                {cursorComposers.total > cursorComposers.shown.length
+                  ? `최근 ${cursorComposers.shown.length}개만 표시 · 이 기간 전체 ${cursorComposers.total}개 중`
+                  : `이 기간 CLI 대화 ${cursorComposers.total}개`}
+                {cursorContext.ideExcluded ? ` · IDE 컴포저 ${cursorContext.ideExcluded.toLocaleString('ko-KR')}개는 절대 토큰이 없어 제외` : ''}
+              </p>
+            </>
+          )}
         </section>
       </div>
     </>

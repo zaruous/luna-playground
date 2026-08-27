@@ -90,6 +90,9 @@ export function createUsageClient(config, {
       getTimeseries: (params = {}) => request(`/usage/timeseries?${new URLSearchParams(clean(params))}`),
       getModels: (params = {}) => request(`/usage/models?${new URLSearchParams(clean(params))}`),
       getQuotaHistory: (params = {}) => request(`/quota/history?${new URLSearchParams(clean(params))}`),
+      // Cursor 전용 — 컨텍스트 구성 스냅샷. getTimeseries 와 계약이 달라
+      // 별도 경로입니다(docs/dev/cursor/README.md "usage" 절).
+      getCursorContext: (params = {}) => request(`/cursor/context?${new URLSearchParams(clean(params))}`),
       subscribe,
     },
     // 세션 흐름. 목록은 기간·provider 로 필터하고, 상세는 세션을 골랐을 때만

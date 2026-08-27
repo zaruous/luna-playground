@@ -17,6 +17,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { UsageStore } from '../service/store.mjs';
 import { CursorCollector } from '../service/providers/cursor/collector.mjs';
+import { UsageEngine } from '../service/engine.mjs';
+import { UsageApiServer } from '../service/api-server.mjs';
 
 const SENTINELS = ['SENTINEL-USER-PROMPT', 'SENTINEL-ASSISTANT-TEXT', 'SENTINEL-AUTH-TOKEN'];
 
@@ -197,10 +199,16 @@ test('대화 본문 · 시크릿이 SQLite 바이트와 스냅샷에 남지 않�
   const home = writeHome();
   const { store, collector, dbPath } = open(home);
   await collector.reconcile('test');
+  const projects = store.getProjectBreakdown({ provider: 'cursor' });
   const snapshotJson = JSON.stringify({
     activity: store.db.prepare('SELECT * FROM cursor_local_activity').all(),
     context: store.getCursorContextSummary(),
-    projects: store.getRecentProjectsAcrossProviders(6),
+    recentProjects: store.getRecentProjectsAcrossProviders(6),
+    projects,
+    // 프로젝트 상세·(신규) 컨텍스트 구성 패널도 같은 테이블을 읽는 새 경로라
+    // 함께 훑습니다 — 컬럼을 늘려 읽다가 content 를 실수로 끌어오지 않는지.
+    detail: projects[0] ? store.getProjectDetail({ projectKey: projects[0].projectKey }) : null,
+    cursorContext: store.getCursorContextBreakdown({}),
   });
   store.close();
   const bytes = fs.readFileSync(dbPath);
@@ -282,5 +290,54 @@ test('IDE 만 있으면 절대 토큰 없이 컨텍스트 백분율로 대시보
   } finally {
     collector.stop();
     store.close();
+  }
+});
+
+// usage 화면의 "Cursor — 컨텍스트 구성" 패널이 실제로 부르는 경로 전체
+// (엔진 → API 서버 → HTTP)를 한 번은 끝까지 확인합니다 — 라우팅·인증·JSON
+// 모양은 store 단위 테스트로는 안 잡힙니다.
+test('GET /api/v1/cursor/context 가 인증을 요구하고 breakdown 을 내려주며 본문은 안 싣는다', async () => {
+  const home = writeHome();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-cursor-api-'));
+  const empty = path.join(root, 'no-such-provider-home');
+  const engine = new UsageEngine({
+    userDataPath: root,
+    codexHome: empty,
+    claudeHomes: [empty],
+    geminiHomes: [empty],
+    cursorHome: home,
+    cursorAppData: path.join(home, 'appdata', 'Cursor', 'User'),
+  });
+  const server = new UsageApiServer({ usageEngine: engine, host: '127.0.0.1', port: 0 });
+  try {
+    await engine.cursor.reconcile('test:api');
+    const baseUrl = await server.start();
+
+    const unauthorized = await fetch(`${baseUrl}/api/v1/cursor/context?all=1`);
+    assert.equal(unauthorized.status, 401, '다른 API 라우트와 같은 인증을 타야 합니다');
+
+    // 픽스처의 last_updated_at 은 고정된 과거 시각이라(writeCliChat), 다른
+    // usage 라우트와 같은 기본값(이번 달)으로 걸면 아무것도 안 잡힙니다 —
+    // all=1 로 전체 기간을 명시합니다(#since 의 관례, api-server.mjs).
+    const res = await fetch(`${baseUrl}/api/v1/cursor/context?all=1`, {
+      headers: { 'X-Nyang-Access-Token': server.accessToken },
+    });
+    assert.equal(res.status, 200);
+    const bodyText = await res.text();
+    const payload = JSON.parse(bodyText);
+    assert.equal(payload.composers.length, 1, 'CLI 대화 하나만 breakdown 을 냅니다');
+    assert.equal(payload.composers[0].totalTokens, 27766);
+    assert.equal(payload.composers[0].windowTokens, 200000);
+    assert.deepEqual(payload.composers[0].breakdown, {
+      system_prompt: 517, tools: 8079, rules: 3026, conversation: 16144,
+    });
+    assert.equal(payload.ideExcluded, 1, 'IDE 컴포저는 breakdown 이 없어 제외되고 개수로만 드러납니다');
+    for (const sentinel of SENTINELS) {
+      assert.ok(!bodyText.includes(sentinel), `${sentinel} 가 /cursor/context 응답에 남아 있습니다`);
+    }
+  } finally {
+    await server.stop();
+    await engine.stop();
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
