@@ -394,6 +394,49 @@ test('턴 원장이 비어 있어도 기존 집계는 그대로 동작한다', (
   }
 });
 
+test('Gemini 는 reasoning 이 output 밖에 있어도 턴 합계가 원장 합계와 같다', () => {
+  // 실측으로 잡힌 결함: 턴 토큰을 promptSideTokens + output 으로 재구성하면
+  // Claude/Codex(output 이 reasoning 을 포함)는 맞지만, Gemini(reasoning 이
+  // output 밖)는 그 턴의 reasoning 만큼 조용히 빠집니다. 고친 뒤에는 원장의
+  // total_tokens 를 그대로 쓰므로 재구성하지 않습니다 — 그래서 회계와
+  // 무관하게 항상 성립해야 합니다.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-flow-gemini-reasoning-'));
+  const store = new UsageStore(path.join(root, 'usage.sqlite3'));
+  try {
+    const sessionId = 'gemini-reasoning-0001';
+    const session = { provider: 'gemini', sessionId, cwd: '/repo/g', projectName: 'g', model: 'gemini-test' };
+    store.insertUsageEvent({
+      type: 'usage', provider: 'gemini', eventTimestamp: '2026-08-21T10:00:00.000Z',
+      session, turnIndex: 1,
+      delta: { inputTokens: 1000, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 200, reasoningTokens: 300, totalTokens: 1500 },
+    }, '/g1.jsonl', 0);
+    store.insertUsageEvent({
+      type: 'usage', provider: 'gemini', eventTimestamp: '2026-08-21T10:00:05.000Z',
+      session, turnIndex: 1,
+      delta: { inputTokens: 500, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 100, reasoningTokens: 0, totalTokens: 600 },
+    }, '/g1.jsonl', 200);
+
+    const ledgerTotal = store.getProviderTotals('gemini').totalTokens;
+    assert.equal(ledgerTotal, 2100);
+
+    const flow = store.getSessionFlow({ provider: 'gemini', sessionId });
+    assert.equal(flow.turns.length, 1);
+    // 결함이 있었다면 이 값이 2100 - 300(reasoning) = 1800 으로 나왔습니다.
+    assert.equal(flow.turns[0].totalTokens, 2100);
+    const turnSum = flow.turns.reduce((sum, turn) => sum + turn.totalTokens, 0);
+    assert.equal(turnSum, ledgerTotal, '턴 토큰 합은 원장 합과 항상 같아야 합니다');
+
+    const turnSource = store.getTurnSource({ provider: 'gemini', sessionId, turnIndex: 1 });
+    assert.equal(turnSource.ledger.totalTokens, ledgerTotal);
+
+    const sessionSource = store.getSessionSource({ provider: 'gemini', sessionId });
+    assert.equal(sessionSource.ledger.totalTokens, ledgerTotal);
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('없는 세션은 null 을 돌려준다', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nyang-flow-404-'));
   const store = new UsageStore(path.join(root, 'usage.sqlite3'));

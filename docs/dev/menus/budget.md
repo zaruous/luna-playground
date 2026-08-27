@@ -16,7 +16,7 @@
 | Hook 제어 | `capabilities.hooks`인 provider마다 설치/해제 카드 — Codex 4종·Claude 5종 이벤트 칩, 백업 파일 이름 |
 | 서버 한도 이력 | `limit_id` × window별 백분율 추이 (percent 축, 토큰 아님) |
 | 대조 이력 | reconciliation 분류별 타임라인 — 특히 `SERVER_ONLY_CHANGE` |
-| 진단 | SQLite 경로, 행 카운터 5종 |
+| 진단 | SQLite 경로, 행 카운터 6종(`cursorActivity` 포함) |
 
 ## provider 카드 상태 모델
 
@@ -79,7 +79,9 @@ GET /api/v1/quota/history?provider=&limitId=&windowMinutes=&since=   ← 구현�
 
 ## 진단
 
-`GET /api/v1/diagnostics`가 이미 `dbPath`, `sessions`, `usageEvents`, `rateSnapshots`, `scanFiles`, `cumulativeResets`를 반환합니다. 화면에 그대로 노출하고, **SQLite 경로 열기** 버튼은 두지 않습니다(브라우저에서 로컬 파일 열기는 불가하고, 서비스가 셸을 실행하는 경로를 만들면 안 됩니다).
+`GET /api/v1/diagnostics`가 `dbPath`, `sessions`, `usageEvents`, `rateSnapshots`, `scanFiles`, `cumulativeResets`, **`cursorActivity`**(`cursor_local_activity` 행 수, `service/store.mjs:2068`)를 반환합니다. 화면에 그대로 노출하고, **SQLite 경로 열기** 버튼은 두지 않습니다(브라우저에서 로컬 파일 열기는 불가하고, 서비스가 셸을 실행하는 경로를 만들면 안 됩니다).
+
+`cursorActivity`는 `usageEvents`와 별도 카운터입니다 — Cursor 행이 `usage_events`에 안 들어간다는 [Decision 4](../cursor/decisions.md)를 그대로 반영해, `.stat-mini-grid.diag-grid`에 여섯 번째 칸으로 추가했습니다(`src/views/BudgetView.jsx`). 다섯 카운터와 자리만 나란할 뿐 같은 테이블 집계가 아니므로 합산해 보여주지 않습니다.
 
 ## 완료 기준
 
@@ -91,6 +93,7 @@ GET /api/v1/quota/history?provider=&limitId=&windowMinutes=&since=   ← 구현�
 - [x] 한도 이력 축이 percent이고 토큰 값이 섞이지 않음 — 게이지는 `usedPercent` 만 쓰고(`src/views/BudgetView.jsx:116-117`) 스파크라인도 percent 전용 축입니다(`src/views/QuotaHistory.jsx:15`). 토큰은 차트가 아니라 대조 이력 **목록**에만 나오고, 서버 `%p` 와 라벨로 갈라 적습니다(`BudgetView.jsx:136`)
 - [x] `lastError` 가 스택트레이스 없이 한 줄로 표시됨 — 수집기가 `String(error?.message ?? error)` 만 담고(`service/providers/codex/collector.mjs:203`, `claude/collector.mjs:247`) 화면이 첫 줄만 씁니다(`src/views/BudgetView.jsx:32`)
 - [ ] 자격증명 값이 화면·응답에 나타나지 않음(설정 여부만) — 자격증명을 저장하는 코드가 아직 없어(`service/` 에 자격증명 테이블도 `apiKey` 심볼도 없고, `capabilities.credentials` 는 claude `'none'`) 검증할 대상 자체가 없습니다 (M6에서 확인)
+- [x] 진단 패널의 `cursorActivity` 카운터가 `usage_events` 카운터와 섞이지 않고 별도 칸으로 표시됨 — `getDiagnostics()` 가 `cursor_local_activity` 를 별도 `COUNT(*)` 로 세고(`service/store.mjs:2068`), 화면은 이를 다섯 카운터와 합산하지 않고 여섯 번째 `.stat-mini` 로만 병치합니다(`src/views/BudgetView.jsx`)
 
 ## 하지 않는 것
 

@@ -20,6 +20,7 @@
 | 기간 합계 | **구현됨** 차트에 그려진 버킷의 합. 종류별 다섯 조각 — 아래 [TODO T1](#todo) 참조 |
 | 상세 표 | **미구현** 계획은 버킷 × provider × 모델 행 + 페이지네이션이었고, 들어간 것은 **provider별 한 줄** 표(정렬 가능, 품질 열 포함)입니다 |
 | 내보내기 | **미구현** 현재 필터 결과를 CSV로 (M7) |
+| Cursor — 컨텍스트 구성 | **구현됨(T2)** 위 추이 차트와 완전히 다른 계약(요청 델타가 아니라 컨텍스트 스냅샷) — 별도 패널·별도 엔드포인트 |
 
 토큰 종류를 6개로 쪼개는 이유는 provider마다 제공 범주가 달라서입니다 — Codex에는 도구 토큰이 없고, Gemini에는 캐시 쓰기가 없습니다. 하나로 합치면 "왜 provider마다 합이 다르게 보이는가"를 설명할 수 없습니다.
 
@@ -37,6 +38,16 @@ GET /api/v1/usage/models?since=&all=&provider=                     구현됨
 
 GET /api/v1/usage/events?...&page=&pageSize=                       미구현
   → { rows: [...], page, pageSize, total }     // 상세 표 (페이지네이션)
+
+GET /api/v1/cursor/context?since=&until=&all=                      구현됨(T2)
+  → { composers: [{ composerId, surface, projectName, cwd, redacted,
+                     observedAt, totalTokens, windowTokens, breakdown }],
+      ideExcluded }
+     위 timeseries/models 와 계약이 다릅니다 — tokens:{...}(요청 델타)가 아니라
+     컴포저(대화)별 "마지막 관측" breakdown 나열입니다. surface==='ide' 인
+     컴포저는 blob 을 컴포저에 귀속시킬 근거가 없어(파서 스코프 결정) 절대
+     토큰이 없고, 이 응답에는 아예 안 나타납니다 — 그 개수만 ideExcluded 로
+     드러냅니다. bucket/provider/model 파라미터는 없습니다.
 ```
 
 `until` 은 만들지 않았습니다. 화면이 요구한 것은 "오늘까지 거슬러 N일" 과 "전체"
@@ -58,6 +69,7 @@ GET /api/v1/usage/events?...&page=&pageSize=                       미구현
 ```js
 getUsageTimeseries({ provider, model, bucket, since, until })
 getModelBreakdown({ provider, since, until })
+getCursorContextBreakdown({ since, until })   // (신규) T2 — cursor_local_activity 전용
 ```
 
 버킷 키는 SQLite `strftime`으로 만들고, **로컬 시간대 기준**으로 끊습니다. 엔진이 이미 `startOfLocalMonthIso()`로 로컬 월 경계를 쓰므로 기준을 통일해야 합니다. UTC로 끊으면 대시보드 월 합계와 이 화면의 월 합계가 어긋납니다.
@@ -81,6 +93,9 @@ getModelBreakdown({ provider, since, until })
 - [x] 미제공 범주가 0이 아니라 미표시로 구분됨 — `src/shared.js` 의 `tokensOrDash` 가 값 0 을 `—` 로 적고, 아직 값이 오지 않은 자리는 `로딩중..` 으로 갈라 적습니다(`measurementPending`). `test/shared-helpers.test.mjs`
 - [ ] 상세 표 페이지네이션이 1000행 이상에서 동작 — **미구현**(상세 표 자체가 없음)
 - [x] 기간을 전체로 넓히면 이번 달 이전 기록이 실제로 나온다 — `test/period-all-time.test.mjs`
+- [x] Cursor 컨텍스트 구성이 `usage_events` 계약을 흉내 내지 않고 별도 패널·별도 엔드포인트로 나온다 —
+  아래 [T2](#t2-cursor-컨텍스트-구성-반영--완료), `test/cursor-collector.test.mjs`의
+  `GET /api/v1/cursor/context 가 인증을 요구하고 breakdown 을 내려주며 본문은 안 싣는다`
 
 ## TODO
 
@@ -98,6 +113,35 @@ getModelBreakdown({ provider, since, until })
 
 지금 화면이 그럴듯한 숫자를 보여주고 있어서 **틀린 것을 알아채기 어려운 쪽**이라,
 남은 것 중 우선순위가 높습니다.
+
+### T2. Cursor 컨텍스트 구성 반영 — 완료
+
+`docs/dev/cursor/기능적용가능성.md`에서 이 화면에 별도 O 항목으로 분리해뒀던
+"Cursor — 컨텍스트 구성" 패널과 `GET /api/v1/cursor/context`를 구현했습니다.
+
+**왜 위 추이 차트에 못 얹는가.** 위 차트/기간 합계/모델별 비중은 전부
+`usage_events`(요청 단위 입력/출력 델타)가 소스입니다. Cursor 로컬 활동은
+[Decision 4](../cursor/decisions.md)에 따라 `usage_events`에 안 들어가고 별도
+`cursor_local_activity`(컨텍스트 스냅샷) 테이블에 있습니다 — "그 컴포저(대화)를
+마지막으로 관측했을 때 컨텍스트 창이 어떻게 구성돼 있었는가"이지 "이번 요청에
+토큰이 얼마나 오갔는가"가 아닙니다. 같은 차트에 억지로 얹으면 두 회계를
+섞게 되므로(R4), 계약이 다른 새 패널·새 엔드포인트로 분리했습니다.
+
+**구현.** `service/store.mjs`의 `getCursorContextBreakdown({since, until})`이
+`context_breakdown IS NOT NULL`인 (CLI 표면) 행을 관측 시각 순으로 모으고,
+`context_breakdown IS NULL`인 (IDE 표면) 행 수를 `ideExcluded`로 따로 셉니다 —
+IDE는 blob 을 컴포저에 귀속시킬 근거가 없어(Phase 0b 결정) 애초에 절대 토큰이
+없기 때문입니다(위 [API](#api) 절 참고). `UsageView.jsx`는 컴포저별 가로 스택
+막대(카테고리별 세그먼트, `cx-*` 팔레트)를 최신 20개까지 그리고, 잘린 개수와
+`ideExcluded` 개수를 각각 안내 문구로 답니다 — 조용히 자르지 않습니다.
+
+**팔레트.** 기존 `tk-*`(토큰 종류) 5색과 별도로 `cx-*`(Cursor 카테고리) 8색을
+`dataviz` 스킬의 `scripts/validate_palette.js`로 검증해 `src/styles.css`에
+추가했습니다(코드 주석에 수치 인용).
+
+**제외한 것.** 모델 분포·세션/턴 표는 이 T2 범위가 아닙니다 — 기능적용가능성.md의
+해당 행은 원래 X(불가) 판정이었고 이번 패스도 그 판정을 바꾸지 않습니다
+(파싱 결정상 Cursor는 모델명·턴 경계를 노출하지 않습니다).
 
 ## 하지 않는 것
 

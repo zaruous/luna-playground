@@ -5,6 +5,7 @@ import { UsageStore } from './store.mjs';
 import { CodexCollector } from './providers/codex/collector.mjs';
 import { ClaudeCollector } from './providers/claude/collector.mjs';
 import { GeminiCollector } from './providers/gemini/collector.mjs';
+import { CursorCollector } from './providers/cursor/collector.mjs';
 import { UsageProviderRegistry } from './providers/contracts.mjs';
 import { HookServer } from './hook-server.mjs';
 import { ScanPool } from './scan-pool.mjs';
@@ -134,6 +135,8 @@ export class UsageEngine extends EventEmitter {
     codexHome,
     claudeHomes,
     geminiHomes,
+    cursorHome,
+    cursorAppData,
     readyEmitIntervalMs = DEFAULT_READY_EMIT_INTERVAL_MS,
     now = Date.now,
     scheduleReadyEmit = (fn, delayMs) => setTimeout(fn, delayMs),
@@ -151,7 +154,12 @@ export class UsageEngine extends EventEmitter {
       store: this.store,
       ...(geminiHomes ? { geminiHomes } : {}),
     });
-    this.providerRegistry = new UsageProviderRegistry({ adapters: [this.codex, this.claude, this.gemini] });
+    this.cursor = new CursorCollector({
+      store: this.store,
+      ...(cursorHome ? { cursorHome } : {}),
+      ...(cursorAppData ? { cursorAppData } : {}),
+    });
+    this.providerRegistry = new UsageProviderRegistry({ adapters: [this.codex, this.claude, this.gemini, this.cursor] });
     this.hookServer = new HookServer({ onSignal: (payload) => this.routeHookSignal(payload) });
     this.started = false;
     this.resetting = false;
@@ -427,6 +435,12 @@ export class UsageEngine extends EventEmitter {
           lastHookAt: this.lastHookAt.get(definition.id) ?? null,
         },
         reconciliation: reconciliationSummary(this.store.getRecentReconciliation(definition.id)),
+        // Cursor 전용 부가 필드 — "마지막 관측 컨텍스트 총 토큰/창 크기"는
+        // totals/allTimeTotals(usage_events 기반, 요청 델타)와 뜻이 달라 같은
+        // 자리에 못 넣습니다(docs/dev/cursor/decisions.md 결정 4). 다른
+        // provider 에는 이 필드가 없습니다 — Gemini 의 sources 부가 필드와 같은
+        // "provider 별로만 뜻이 있는 값" 패턴입니다.
+        ...(definition.id === 'cursor' ? { cursorContext: this.store.getCursorContextSummary() } : {}),
       };
     });
     const totals = sumTokenTotals(providers);

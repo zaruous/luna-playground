@@ -12,6 +12,7 @@ Gemini CLI 세션 로그를 읽어 공용 원장에 넣는 어댑터입니다. C
 | [antigravity.md](./antigravity.md) | Antigravity CLI(agy) SQLite protobuf — 확인된 것·미확정·화면 정책 |
 | [formats.md](./formats.md) | 포맷 두 개(`.json` 스냅샷 / `.jsonl` 증분 로그)와 커서 규칙, `$set` 처리 |
 | [decisions.md](./decisions.md) | 설계 결정, 하지 않은 것, 남은 것 |
+| [기능적용가능성.md](./기능적용가능성.md) | 화면 요소 단위 O/△/X 점검 — `src/views/*.jsx` 를 전부 읽고 Gemini 데이터로 옳게 그려지는지 확인한 결과 + 문서·코드 불일치 11건 |
 
 상위 문서에서의 위치는 [provider-token-api.md §5.4](../provider-token-api.md),
 [implementation-plan.md M5](../implementation-plan.md),

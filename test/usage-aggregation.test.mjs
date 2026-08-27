@@ -191,6 +191,232 @@ test('마지막 활동이 동률이면 토큰이 아니라 그룹 키 순으로 
   }
 });
 
+// Cursor 는 usage_events 에 행이 없습니다(docs/dev/cursor/decisions.md 결정 4) —
+// cursor_local_activity 로만 들어옵니다. getRecentProjectsAcrossProviders 는 이
+// 테이블을 UNION 으로 더해 같은 프로젝트 목록에 섞습니다.
+function cursorEvent({
+  composerId = 'composer-1', surface = 'cli', cwd = '/repo/cursor-proj', projectName = 'cursor-proj',
+  lastUpdatedAt = '2026-08-20T10:00:00.000Z', requestCount = 3, linesAdded = null, linesRemoved = null,
+  contextUsagePercent = null, contextTotalTokens = 5000, contextWindowTokens = 200000,
+  contextBreakdown = { conversation: 5000 },
+} = {}) {
+  return {
+    composerId, surface, workspaceId: null, cwd, projectName,
+    createdAt: lastUpdatedAt, lastUpdatedAt,
+    requestCount, linesAdded, linesRemoved,
+    contextUsagePercent, contextTotalTokens, contextWindowTokens,
+    contextBreakdown, parserVersion: 1,
+  };
+}
+
+test('최근 프로젝트 목록에는 Cursor 도 마지막 활동 기준으로 섞인다', () => {
+  const { root, store } = makeStore();
+  try {
+    insert(store, { offset: 0, timestamp: '2026-08-01T03:00:00.000Z', cwd: '/repo/old-codex', projectName: 'old-codex' });
+    store.upsertCursorActivity(cursorEvent({ lastUpdatedAt: '2026-08-20T10:00:00.000Z' }));
+
+    const projects = store.getRecentProjectsAcrossProviders(6);
+    assert.equal(projects[0].provider, 'cursor');
+    assert.equal(projects[0].name, 'cursor-proj');
+    assert.equal(projects[0].cwd, '/repo/cursor-proj');
+    // 있지도 않은 요청 델타를 지어내면 R7 위반입니다 — 0으로 고정합니다.
+    assert.equal(projects[0].totalTokens, 0);
+    assert.equal(projects[1].provider, 'codex');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('since 필터는 Cursor 활동에도 last_updated_at 기준으로 적용된다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({ composerId: 'composer-old', lastUpdatedAt: '2026-07-01T00:00:00.000Z', projectName: 'cursor-old' }));
+    store.upsertCursorActivity(cursorEvent({ composerId: 'composer-new', lastUpdatedAt: '2026-08-20T00:00:00.000Z', projectName: 'cursor-new' }));
+
+    const recent = store.getRecentProjectsAcrossProviders(6, '2026-08-01T00:00:00.000Z');
+    assert.deepEqual(recent.map((project) => project.name), ['cursor-new']);
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// 프로젝트 화면(getProjectBreakdown)은 일부러 토큰 순을 유지합니다(위
+// "'최근' 프로젝트 목록은..." 테스트와 대비되는 지점) — Cursor 는 비교 가능한
+// 토큰이 없어(R7) 그 순위에 안 섞이고 뒤에 자기 그룹(최근 순)으로 붙습니다.
+test('getProjectBreakdown 은 Cursor 를 토큰 순위에 안 섞고 뒤에 별도로 붙인다', () => {
+  const { root, store } = makeStore();
+  try {
+    insert(store, { offset: 0, cwd: '/repo/big-old', projectName: 'big-old', sessionId: 'session-old' });
+    insert(store, { offset: 1, cwd: '/repo/big-old', projectName: 'big-old', sessionId: 'session-old' });
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c1', projectName: 'cursor-proj', requestCount: 5 }));
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c2', projectName: 'cursor-proj', requestCount: 2, lastUpdatedAt: '2026-08-19T00:00:00.000Z' }));
+
+    const rows = store.getProjectBreakdown({});
+    assert.equal(rows[0].provider, 'codex', '토큰 순 1위는 그대로 codex 여야 합니다');
+    const cursorRow = rows.find((row) => row.provider === 'cursor');
+    assert.ok(cursorRow, 'Cursor 프로젝트도 목록에 나타나야 합니다');
+    assert.equal(cursorRow.totalTokens, null, '있지도 않은 토큰을 0으로 지어내지 않습니다(R7)');
+    assert.equal(cursorRow.modelCount, null);
+    assert.equal(cursorRow.sessionCount, 2, '컴포저(대화) 수 — c1·c2 두 개');
+    assert.equal(cursorRow.requestCount, 7, '요청 수는 컴포저 전체 합계(5+2)');
+    assert.equal(cursorRow.lastActivity, '2026-08-20T10:00:00.000Z', '컴포저 중 가장 최근 관측');
+
+    // provider 를 codex 로 명시하면 Cursor 가 섞이지 않아야 합니다(회귀 방지).
+    const codexOnly = store.getProjectBreakdown({ provider: 'codex' });
+    assert.ok(!codexOnly.some((row) => row.provider === 'cursor'));
+    // provider 를 cursor 로 명시하면 usage_events 를 아예 안 봐야 합니다.
+    const cursorOnly = store.getProjectBreakdown({ provider: 'cursor' });
+    assert.ok(cursorOnly.every((row) => row.provider === 'cursor'));
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('getProjectDetail 은 Cursor projectKey 도 찾아 다른 모양의 상세를 준다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({
+      composerId: 'c1', projectName: 'cursor-proj', requestCount: 4, linesAdded: 30, linesRemoved: 5,
+      contextTotalTokens: 27766, contextWindowTokens: 200000, lastUpdatedAt: '2026-08-20T09:00:00.000Z',
+    }));
+    store.upsertCursorActivity(cursorEvent({
+      composerId: 'c2', projectName: 'cursor-proj', requestCount: 1, linesAdded: 10, linesRemoved: 0,
+      contextTotalTokens: 12000, contextWindowTokens: 200000, lastUpdatedAt: '2026-08-19T09:00:00.000Z',
+    }));
+    const key = projectKeyOf('cursor', 'cursor-proj');
+
+    const detail = store.getProjectDetail({ projectKey: key });
+    assert.ok(detail, 'usage_events 뿐 아니라 cursor_local_activity 프로젝트 이름도 찾아야 합니다');
+    assert.equal(detail.project.provider, 'cursor');
+    assert.equal(detail.project.totalTokens, null);
+    // 요청 단위 개념(모델·세션 표+턴 분석)은 기능적용가능성.md 에서 이미
+    // X 로 배제된 항목입니다 — 지어내지 않고 빈 배열로 남깁니다.
+    assert.deepEqual(detail.models, []);
+    assert.deepEqual(detail.sessions, []);
+    // (신규) "Cursor 활동" 카드 — 실제로 있는 신호는 합산해서 줍니다.
+    assert.equal(detail.cursorActivity.composerCount, 2);
+    assert.equal(detail.cursorActivity.requestCount, 5);
+    assert.equal(detail.cursorActivity.linesAdded, 40);
+    assert.equal(detail.cursorActivity.linesRemoved, 5);
+    assert.equal(detail.cursorActivity.lastObserved.composerId, 'c1', '가장 최근 컴포저여야 합니다');
+    assert.equal(detail.cursorActivity.lastObserved.contextTotalTokens, 27766);
+
+    // 존재하지 않는 Cursor 프로젝트 이름은 여전히 null 이어야 합니다(404 유지).
+    assert.equal(store.getProjectDetail({ projectKey: projectKeyOf('cursor', 'no-such-project') }), null);
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Cursor 프로젝트도 별칭·경로 가림이 별도 구현 없이 자동 적용된다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c1', cwd: '/repo/secret-cursor-client', projectName: 'secret-cursor-client' }));
+    const key = projectKeyOf('cursor', 'secret-cursor-client');
+    store.setProjectAlias({ provider: 'cursor', projectKey: key, alias: '고객사 C', redacted: true });
+
+    const [row] = store.getProjectBreakdown({ provider: 'cursor' });
+    assert.equal(row.name, '고객사 C');
+    assert.equal(row.redacted, true);
+    assert.equal(row.cwd, null, '가림이 켜지면 경로는 응답에서 지워집니다');
+
+    const detail = store.getProjectDetail({ projectKey: key });
+    assert.equal(detail.project.name, '고객사 C');
+    assert.equal(detail.project.redacted, true);
+
+    const serialized = JSON.stringify([row, detail]);
+    assert.ok(!serialized.includes('secret-cursor-client'), '가림 후에도 원본 이름이 응답에 남아 있습니다');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// cwd 없는 컴포저는 project_name 이 빈 문자열이 아니라 SQL NULL 입니다
+// (parser.mjs — cwd 가 없으면 projectNameFromCwd 를 안 거치고 null 을 그대로
+// 씁니다). getProjectBreakdown 은 이걸 '(미분류)' 로 묶어 보여주므로, 상세
+// 카드(getCursorProjectActivity)도 같은 행을 찾아야 sessionCount 와 모순되지
+// 않습니다 — 회귀 재발 방지(review wf_c73a866f-909 Finding 1).
+test('cwd 없는 Cursor 컴포저도 "(미분류)" 프로젝트 상세에서 0으로 안 보인다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c1', cwd: null, projectName: null, requestCount: 4 }));
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c2', cwd: null, projectName: null, requestCount: 1, lastUpdatedAt: '2026-08-19T09:00:00.000Z' }));
+
+    const [row] = store.getProjectBreakdown({ provider: 'cursor' });
+    assert.equal(row.name, '(미분류)');
+    assert.equal(row.sessionCount, 2, '목록에는 두 컴포저가 정상 집계됩니다');
+
+    const detail = store.getProjectDetail({ projectKey: row.projectKey });
+    assert.ok(detail, '프로젝트 목록이 준 키로 상세가 열려야 합니다');
+    // 여기가 회귀 지점이었습니다 — project_name = '' 로 필터링하면 NULL 행을
+    // 하나도 못 찾아 이 카드 전체가 조용히 0/—으로 나왔습니다(R7 위반).
+    assert.equal(detail.cursorActivity.composerCount, 2, '목록의 sessionCount(2)와 일치해야 합니다');
+    assert.equal(detail.cursorActivity.requestCount, 5);
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// getRecentProjectsAcrossProviders(대시보드·상세 내역의 "최근 프로젝트")와
+// getProjectBreakdown(프로젝트 화면 자체 목록)이 cwd 없는 Cursor 컴포저를
+// 같은 projectKey 로 가리켜야 클릭 이동이 성립합니다 — 두 자리표시자
+// ('unknown-project' vs '(미분류)')가 갈리면 있는 프로젝트인데도 다른 화면에서
+// 404/"찾지 못했어요"가 됩니다(review wf_c73a866f-909 Finding 2).
+test('cwd 없는 Cursor 프로젝트는 "최근 프로젝트" 목록과 프로젝트 화면이 같은 키를 가리킨다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({ composerId: 'c1', cwd: null, projectName: null }));
+
+    const [recent] = store.getRecentProjectsAcrossProviders(6).filter((row) => row.provider === 'cursor');
+    const [listed] = store.getProjectBreakdown({ provider: 'cursor' });
+    assert.equal(recent.name, listed.name, '두 화면이 같은 자리표시자 이름을 써야 키가 갈리지 않습니다');
+
+    const key = projectKeyOf('cursor', recent.name);
+    assert.equal(key, listed.projectKey, '"최근 프로젝트"가 주는 키가 프로젝트 화면 자체 키와 같아야 합니다');
+    assert.ok(store.getProjectDetail({ projectKey: key }), '그 키로 상세가 실제로 열려야 합니다(404 회귀 방지)');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// usage 화면의 "Cursor — 컨텍스트 구성" 패널 전용 쿼리.
+test('getCursorContextBreakdown 은 breakdown 있는 CLI 행만 내고 IDE 행 수는 따로 센다', () => {
+  const { root, store } = makeStore();
+  try {
+    store.upsertCursorActivity(cursorEvent({
+      composerId: 'cli-1', surface: 'cli', contextBreakdown: { system_prompt: 500, conversation: 4500 },
+      contextTotalTokens: 5000, contextWindowTokens: 200000, lastUpdatedAt: '2026-08-20T01:00:00.000Z',
+    }));
+    // IDE 행은 절대 토큰 breakdown 이 없습니다(파서 스코프 결정) — contextBreakdown: null.
+    store.upsertCursorActivity(cursorEvent({
+      composerId: 'ide-1', surface: 'ide', contextBreakdown: null, contextTotalTokens: null,
+      contextWindowTokens: null, contextUsagePercent: 47.8, lastUpdatedAt: '2026-08-20T02:00:00.000Z',
+    }));
+
+    const result = store.getCursorContextBreakdown({});
+    assert.equal(result.composers.length, 1);
+    assert.equal(result.composers[0].composerId, 'cli-1');
+    assert.equal(result.composers[0].surface, 'cli');
+    assert.deepEqual(result.composers[0].breakdown, { system_prompt: 500, conversation: 4500 });
+    assert.equal(result.composers[0].totalTokens, 5000);
+    assert.equal(result.composers[0].windowTokens, 200000);
+    assert.equal(result.ideExcluded, 1, 'IDE 행이 조용히 사라지지 않고 개수로 드러나야 합니다');
+
+    const sinceLater = store.getCursorContextBreakdown({ since: '2026-08-21T00:00:00.000Z' });
+    assert.equal(sinceLater.composers.length, 0, 'since 필터가 last_updated_at 기준으로 걸려야 합니다');
+  } finally {
+    store.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('한도 이력은 percent만 담고 토큰을 섞지 않는다', () => {
   const { root, store } = makeStore();
   try {

@@ -14,7 +14,7 @@ const PERIODS = [
   { id: 'all', label: '전체' },
 ];
 
-const rankColumns = '1.3fr .8fr .5fr .5fr .6fr .7fr .6fr';
+const rankColumns = '1.1fr .8fr .5fr .5fr .6fr .7fr .7fr .6fr';
 
 // 비싼 턴 표에 담는 개수. 프로젝트 상세의 세션 표도 같은 값을 씁니다.
 const TURN_LIMIT = 8;
@@ -22,6 +22,10 @@ const TURN_LIMIT = 8;
 // 정렬은 원본 값으로 합니다. 토큰은 '4.60B' 같은 글자로 그려지고, 재독 배수는
 // null 이 섞이며(관측 없음), 턴 수는 0 이 아니라 '—' 로 나옵니다 — 화면 글자를
 // 세우면 이 셋이 전부 엉킵니다(Bits.jsx sortRows 주석 참고).
+//
+// 기본 정렬은 여전히 총 토큰(많이 쓴 순)입니다 — 이 화면의 원래 목적이
+// "무엇이 비쌌나"라서입니다. '최근 활동'은 그 기준을 바꾸는 게 아니라 "최근에
+// 만진 세션이 궁금할 때" 골라 쓰는 추가 정렬 열입니다(헤더를 눌러야 적용).
 const RANK_COLUMNS = [
   { key: 'projectName', label: '프로젝트', type: 'text' },
   { key: 'totalTokens', label: '총 토큰', type: 'number', value: (row) => row.tokens?.totalTokens },
@@ -29,6 +33,7 @@ const RANK_COLUMNS = [
   { key: 'turnCount', label: '턴', type: 'number' },
   { key: 'reuseMultiple', label: '재독', type: 'number' },
   { key: 'dominantPhase', label: '우세 단계', type: 'text' },
+  { key: 'lastAt', label: '최근 활동', type: 'time', value: (row) => row.lastAt },
   { key: 'navigate', label: '이동', sortable: false },
 ];
 
@@ -89,6 +94,9 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
   const [period, setPeriod] = useState('month');
   const [providerFilter, setProviderFilter] = useState('all');
   const [sessions, setSessions] = useState(null);
+  // 반환된 sessions 는 상위 40개뿐입니다. 이 값이 없으면 화면이 그 길이를
+  // "이 기간의 세션 수"로 잘못 읽습니다(관측 세션 카드가 실제로 그랬던 문제).
+  const [totalCount, setTotalCount] = useState(null);
   const [selected, setSelected] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
@@ -109,8 +117,13 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
       provider: providerFilter === 'all' ? null : providerFilter,
       limit: 40,
     })
-      .then((payload) => { if (active) { setSessions(payload.sessions ?? []); setLoadError(null); } })
-      .catch((error) => { if (active) { setSessions([]); setLoadError(error.message); } });
+      .then((payload) => {
+        if (!active) return;
+        setSessions(payload.sessions ?? []);
+        setTotalCount(Number.isFinite(payload.totalCount) ? payload.totalCount : null);
+        setLoadError(null);
+      })
+      .catch((error) => { if (active) { setSessions([]); setTotalCount(null); setLoadError(error.message); } });
     return () => { active = false; };
   }, [api, period, providerFilter, stamp]);
 
@@ -140,8 +153,13 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
       phases.set(row.dominantPhase, (phases.get(row.dominantPhase) ?? 0) + row.tokens.totalTokens);
     }
     const dominant = [...phases.entries()].sort((left, right) => right[1] - left[1])[0] ?? null;
-    return { count: list.length, worst, dominant };
-  }, [list]);
+    // 프로젝트 필터가 없으면 서버가 상한 없이 센 진짜 개수(totalCount)를 씁니다.
+    // 필터가 있으면 그 필터는 클라이언트에서 걸러서 서버 개수와 안 맞으므로
+    // 걸러진 목록 길이를 그대로 씁니다 — "프로젝트 필터 적용" 문구가 그 뜻을
+    // 이미 알려줍니다.
+    const count = focusProjectKey ? list.length : totalCount ?? list.length;
+    return { count, shown: list.length, worst, dominant };
+  }, [list, focusProjectKey, totalCount]);
 
   // 요약 카드가 읽을 상위 턴. 표를 그리는 일은 ExpensiveTurns 가 하지만,
   // "가장 비싼 턴" 카드는 표의 첫 행이 아니라 이 목록의 최댓값을 읽습니다 —
@@ -188,7 +206,13 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
           <article className="stat-card mini">
             <div className="stat-label">관측 세션 <span>••</span></div>
             <strong>{pending ? PENDING_LABEL : summary?.count ?? 0}</strong>
-            <p>{focusProjectKey ? '프로젝트 필터 적용' : '기간 내 토큰 순'}</p>
+            <p>
+              {focusProjectKey
+                ? '프로젝트 필터 적용'
+                : summary && summary.shown < summary.count
+                  ? `아래 표는 상위 ${summary.shown}개만 표시`
+                  : '기간 내 토큰 순'}
+            </p>
           </article>
           <article className="stat-card mini">
             <div className="stat-label">최고 재독 배수 <span>••</span></div>
@@ -216,7 +240,12 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
                 세우는 것이지 전체에서 다시 뽑는 것이 아닙니다 — 부제가 "총 토큰
                 순"으로 고정되어 있으면 재독순으로 세운 표와 어긋나고, 반대로
                 "재독순"으로만 적으면 전체에서 재독 상위를 뽑은 것처럼 읽힙니다. */}
-            <div><h2>세션 순위 <span>••</span></h2><p className="panel-sub">총 토큰 상위 {list.length}개를 {rankSortLabel} {rankSort.direction === 'asc' ? '오름차순' : '내림차순'}으로 정렬 · 행을 누르면 아래 흐름이 바뀝니다</p></div>
+            <div>
+              <h2>세션 순위 <span>••</span></h2>
+              <p className="panel-sub">
+                총 토큰 상위 {list.length}{summary && summary.shown < summary.count ? `개(기간 내 전체 ${summary.count}개 중)` : '개'}를 {rankSortLabel} {rankSort.direction === 'asc' ? '오름차순' : '내림차순'}으로 정렬 · 헤더를 눌러 '최근 활동' 등 다른 기준으로도 정렬할 수 있습니다 · 행을 누르면 아래 흐름이 바뀝니다
+              </p>
+            </div>
           </div>
           {loadError ? <div className="empty-projects"><strong>세션 목록을 불러오지 못했어요.</strong><span>{loadError}</span></div> : null}
           <div className="table-wrap">
@@ -231,13 +260,14 @@ export default function SessionView({ snapshot, api, focus, pending = false, onN
               >
                 <strong>
                   {row.projectName}
-                  <small>{row.provider} · {row.model ?? '모델 미확인'} · {relativeTime(row.lastAt)}</small>
+                  <small>{row.provider} · {row.model ?? '모델 미확인'}</small>
                 </strong>
                 <strong>{formatTokens(row.tokens.totalTokens)}</strong>
                 <span>{row.requestCount.toLocaleString('ko-KR')}</span>
                 <span>{row.turnCount ? row.turnCount.toLocaleString('ko-KR') : '—'}</span>
                 <span>{reuseLabel(row.reuseMultiple)}</span>
                 <span>{phaseLabel(row.dominantPhase)}</span>
+                <span>{relativeTime(row.lastAt)}</span>
                 <span>
                   <button
                     type="button"

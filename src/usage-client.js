@@ -90,6 +90,9 @@ export function createUsageClient(config, {
       getTimeseries: (params = {}) => request(`/usage/timeseries?${new URLSearchParams(clean(params))}`),
       getModels: (params = {}) => request(`/usage/models?${new URLSearchParams(clean(params))}`),
       getQuotaHistory: (params = {}) => request(`/quota/history?${new URLSearchParams(clean(params))}`),
+      // Cursor 전용 — 컨텍스트 구성 스냅샷. getTimeseries 와 계약이 달라
+      // 별도 경로입니다(docs/dev/cursor/README.md "usage" 절).
+      getCursorContext: (params = {}) => request(`/cursor/context?${new URLSearchParams(clean(params))}`),
       subscribe,
     },
     // 세션 흐름. 목록은 기간·provider 로 필터하고, 상세는 세션을 골랐을 때만
@@ -102,10 +105,22 @@ export function createUsageClient(config, {
       turnDetail: (sessionId, turnIndex, params = {}) => request(
         `/sessions/${encodeURIComponent(sessionId)}/turns/${Number(turnIndex) || 0}/detail?${new URLSearchParams(clean(params))}`,
       ),
+      // 상세 내역(세션 전체 요청 행 + 도구별 토큰량). 응답에 도구 결과 **본문은
+      // 없습니다** — 아래 toolContent 가 유일한 통로입니다.
+      records: (sessionId, params = {}) => request(
+        `/sessions/${encodeURIComponent(sessionId)}/records?${new URLSearchParams(clean(params))}`,
+      ),
+      // 도구 호출 내용. 사람이 [내용 보기]를 눌러 팝업을 열 때만 부릅니다 —
+      // 목록을 그리면서 미리 당기지 않습니다(docs/dev/menus/detail.md).
+      toolContent: (sessionId, toolUseId, params = {}) => request(
+        `/sessions/${encodeURIComponent(sessionId)}/tool-calls/${encodeURIComponent(toolUseId)}/content?${new URLSearchParams(clean(params))}`,
+      ),
     },
     projects: {
       list: (params = {}) => request(`/projects?${new URLSearchParams(clean(params))}`),
+      recent: (params = {}) => request(`/projects/recent?${new URLSearchParams(clean(params))}`),
       detail: (projectKey, params = {}) => request(`/projects/${projectKey}?${new URLSearchParams(clean(params))}`),
+      sessions: (projectKey, params = {}) => request(`/projects/${projectKey}/sessions?${new URLSearchParams(clean(params))}`),
       setAlias: (projectKey, body) => request(`/projects/${projectKey}/alias`, { method: 'PUT', body: JSON.stringify(body) }),
     },
     // 냥코멘트. 서버가 현재 대조 상태에 맞는 문구들을 주고 화면이 하나를 고릅니다.

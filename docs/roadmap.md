@@ -84,6 +84,19 @@ Status: implemented in the current branch.
 
 ## Phase 3 — Cursor Adapter
 
+**Split into two independent tracks (2026-08-25):** M6a (local-only, no remote
+calls) is planned in [dev/cursor/](./dev/cursor/README.md), driven by an explicit
+requirement to measure local token amounts and exclude remote/server usage.
+Real-machine measurement found local storage with attribution and request
+counts but **no token-count fields** — see
+[dev/cursor/measurements.md](./dev/cursor/measurements.md). M6b (the
+Team/Enterprise Admin API section below) is unchanged and deferred until a
+Team/Enterprise account is available to verify against; it is not a
+prerequisite for M6a or vice versa. The "Personal" framing below already
+pointed at M6a's conclusion — no personal Cursor estimate is authoritative
+billed usage — this split makes that the whole first deliverable instead of a
+fallback path.
+
 Cursor requires two modes.
 
 ### Team / Enterprise

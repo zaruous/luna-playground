@@ -116,6 +116,19 @@ M9·M10 과 그 결함 수정 라운드가 닫지 않은 것들입니다. 지금
 - ~~**"최근 프로젝트 발자국" 부제가 Codex 전용 문구입니다.**~~ **닫힘.** 부제가 `provider별 세션 메타데이터의 cwd 기준 자동 분류` 로 바뀌었고, 정렬 기준과 `이번 달` 범위도 부제와 배지에 함께 적힙니다(`src/views/DashboardView.jsx`)
 - **토큰 분해의 `—` 가 두 뜻을 겹쳐 씁니다.** 조각 값이 0 이면 `—` 로 적는데, 이것이 "provider 가 그 항목을 주지 않음"(Claude 의 추론 토큰)과 "재서 0"을 같은 글자로 만듭니다. 지금은 안전한 쪽(모름)으로 기울여 뒀습니다. M10 이 **"아직 안 왔다"** 를 여기서 떼어내 `로딩중..` 으로 갈랐으므로 남은 것은 이 둘뿐입니다. Claude 는 필드 키의 유무로 이미 둘을 구분하므로(`quality.fields`, `parser.mjs` 의 "reasoningTokens 키를 넣지 않는 것이 미제공 표시") 그걸 읽으면 갈라 적을 수 있고, Codex 는 필드 근거 자체를 안 남기므로 그쪽부터 채워야 합니다
 
+### T4. Cursor 반영 — 완료
+
+Cursor 는 `PROVIDER_CATALOG` 에 `planned` 로만 있었고 어댑터가 없었습니다(`docs/dev/cursor/` 트랙 참고 — M6a 로컬 트랙). 이번 라운드에서 `service/providers/cursor/{detector,parser,collector}.mjs` 를 추가해 `integration: 'connected'` 로 승격시켰습니다.
+
+Cursor 는 다른 provider 와 데이터 모양이 다릅니다 — 요청 단위 입력/출력 델타가 아니라 "그 시점 컨텍스트 창 구성 스냅샷"만 있습니다(`docs/dev/cursor/decisions.md` 결정 1). 그래서 `usage_events` 에 안 넣고 새 테이블 `cursor_local_activity` 에만 씁니다(결정 4) — 대시보드 화면 반영은 이 경계를 지키는 선에서만 이뤄졌습니다:
+
+- **provider 카드**: `capabilities.accounting === 'context_only'` 인 행은 다른 provider 와 같은 막대·비중 계산에서 빠집니다(`dashboard-coverage.svg` 10/11번 — "AI별 사용량 provider 바/토큰 분해 줄"은 여전히 배제). 다만 숫자 자리에는 마지막 관측 컨텍스트 값을 텍스트로 보여줍니다 — CLI 관측이 있으면 `"27,766 / 200,000"`, IDE 관측만 있으면 `"컨텍스트 47.8% 사용"`, 아예 없으면 `—`(`src/shared.js` 의 `cursorSourceState`/`cursorContextText`, `service/engine.mjs` 의 `cursorContext` 필드)
+- **캐시 적중 카드**: `context_only` 행은 명시적으로 제외합니다(`DashboardView.jsx` 의 `cacheBreakdown` 필터) — Cursor 는 요청 단위 프롬프트/캐시 개념이 없습니다
+- **최근 프로젝트 발자국**: `getRecentProjectsAcrossProviders` 가 `usage_events` 와 `cursor_local_activity` 를 UNION 해 Cursor 프로젝트도 마지막 활동 기준으로 섞습니다. 토큰류 컬럼은 있지도 않은 요청 델타를 지어내지 않도록 0 으로 고정합니다(R7)
+- **CLI vs IDE 스코프**: IDE 쪽 `cursorDiskKV` blob 은 content-addressed 라 어느 blob 이 어느 컴포저 것인지 귀속시킬 근거가 없습니다(`decisions.md` Phase 0b). 그래서 절대 토큰(`context_total_tokens`/`context_window_tokens`/`context_breakdown`)은 CLI(`~/.cursor/chats/*/store.db`)에서만 채우고, IDE(`composerHeaders`)는 `cwd`/시각/변경 라인 수/`contextUsagePercent`(백분율)만 채웁니다 — 다른 프로젝트의 토큰 수를 잘못 붙이는 사고를 피하기 위한 의도적인 공백입니다
+
+이번 패스가 다루지 않은 것: `usage` 화면의 "Cursor — 컨텍스트 구성" 신규 패널(별도 트랙), `session`/`detail`/`budget` 화면(Phase 0b 전이라 결정 문서가 명시적으로 배제).
+
 ## 완료 기준
 
 - [x] 뷰 분리 후 렌더 결과·SSE 갱신·focus reconcile 동작이 이전과 동일 — M1. 렌더 테스트 인프라가 없어 이동 전후의 `.stat-card` 텍스트와 provider 행 수를 브라우저에서 비교해 확인했습니다
@@ -124,6 +137,7 @@ M9·M10 과 그 결함 수정 라운드가 닫지 않은 것들입니다. 지금
 - [x] 품질 배지가 provider별로 다르게 표시됨 — 다만 **괄호 안의 예시가 틀렸습니다.** Claude 는 `추정` 이 아니라 Codex·Gemini 와 같은 `local_observed` 입니다(`service/providers/*/collector.mjs`). 셋 다 로컬 로그를 직접 읽으므로 provenance 는 같고, provider별로 갈리는 것은 **필드 등급**입니다 — Claude 만 `field_quality` 를 남겨 `exact`/`partial` 을 섞어 보여줍니다. `추정` 라벨은 가격 레지스트리(M7)를 위해 예약된 자리입니다
 - [x] (T1) 캐시 적중·서버 한도·서버 동기화가 provider별로 갈라져 보이고, 한도를 주지 않는 provider는 0%가 아니라 "한도 미제공"으로 표시됨 — 판단 헬퍼는 `test/shared-helpers.test.mjs` 가 못박습니다(`serverQuotaState` 네 상태, `cacheHitPercent` 의 null, `featuredQuotaWindow`, `decomposeTokens`, `reconcileCopy`). JSX 를 렌더링하는 테스트는 아직 없어 화면 쪽 분기는 코드 대조로 확인했습니다(위 T3)
 - [x] (T2) 최근 프로젝트 발자국의 첫 행이 항상 마지막 활동이 가장 최신인 프로젝트임 — `test/usage-aggregation.test.mjs` 의 "'최근' 프로젝트 목록은 토큰이 아니라 마지막 활동 순이다"
+- [x] (T4) Cursor 가 `connected` 로 승격되고, 요청 델타를 전제하는 카드(캐시 적중·AI별 사용량 막대)에는 나타나지 않으며, 최근 프로젝트 발자국·수집 상태 칩에는 반영됨 — `test/cursor-collector.test.mjs`, `test/shared-helpers.test.mjs` 의 `cursorSourceState`/`cursorContextText`, `test/usage-aggregation.test.mjs` 의 "최근 프로젝트 목록에는 Cursor 도 마지막 활동 기준으로 섞인다". `usage_events` 에 Cursor 행이 생기지 않는다는 것도 별도로 못박습니다
 
 ## 하지 않는 것
 

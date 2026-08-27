@@ -6,12 +6,13 @@ import DashboardView from './views/DashboardView.jsx';
 import UsageView from './views/UsageView.jsx';
 import ProjectView from './views/ProjectView.jsx';
 import SessionView from './views/SessionView.jsx';
+import DetailView from './views/DetailView.jsx';
 import BudgetView from './views/BudgetView.jsx';
 import AlertView from './views/AlertView.jsx';
 import SettingsView from './views/SettingsView.jsx';
 
 const navItems = [
-  ['dashboard', '대시보드'], ['usage', 'AI 사용량'], ['session', '세션 흐름'], ['project', '프로젝트'], ['budget', '동기화'], ['alert', '알림'], ['settings', '설정'],
+  ['dashboard', '대시보드'], ['usage', 'AI 사용량'], ['session', '세션 흐름'], ['project', '프로젝트'], ['detail', '상세 내역'], ['budget', '동기화'], ['alert', '알림'], ['settings', '설정'],
 ];
 
 function NavIcon({ type }) {
@@ -20,6 +21,7 @@ function NavIcon({ type }) {
     usage: <><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A8.5 8.5 0 0 1 20.5 9H15z"/></>,
     session: <><path d="M4 18l4-7 4 4 4-9 4 6"/><path d="M3 21h18"/></>,
     project: <><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></>,
+    detail: <><path d="M4 5h16v14H4z"/><path d="M4 9h16M9 9v10"/></>,
     budget: <><circle cx="12" cy="12" r="8"/><path d="M7 12h10M12 7v10"/></>,
     alert: <><path d="M6 17h12l-1.5-2.3V10a4.5 4.5 0 0 0-9 0v4.7z"/><path d="M10 20h4"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a8 8 0 0 0-1.8-1L14.2 3h-4.4l-.4 3a8 8 0 0 0-1.8 1L5.1 6 3 9.4 5.1 11a7 7 0 0 0 0 2L3 14.6 5.1 18l2.5-1a8 8 0 0 0 1.8 1l.4 3h4.4l.4-3a8 8 0 0 0 1.8-1l2.5 1 2-3.4-2-1.6c.1-.3.1-.7.1-1z"/></>,
@@ -173,12 +175,16 @@ function App() {
     snapshot, hookStatuses, api, actionBusy, currentTheme, pending,
     onToggleHooks: toggleHooks,
     onRescan: rescan,
+    // 대시보드의 "최근 프로젝트 발자국"도 세션·프로젝트 화면과 같은 길로
+    // 넘어갑니다 — 행을 누르면 프로젝트 탭이 그 프로젝트를 골라 연다.
+    onNavigate: navigate,
   };
   const views = {
     dashboard: <DashboardView {...viewProps} />,
     usage: <UsageView snapshot={snapshot} api={api} pending={pending} />,
     session: <SessionView snapshot={snapshot} api={api} pending={pending} focus={nav.focus} onNavigate={navigate} />,
     project: <ProjectView snapshot={snapshot} api={api} pending={pending} focus={nav.focus} onNavigate={navigate} />,
+    detail: <DetailView snapshot={snapshot} api={api} pending={pending} />,
     budget: <BudgetView {...viewProps} />,
     alert: <AlertView />,
     settings: <SettingsView snapshot={snapshot} api={api} catTheme={catTheme} onSelectTheme={setCatTheme} />,
